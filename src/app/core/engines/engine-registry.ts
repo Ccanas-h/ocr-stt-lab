@@ -4,7 +4,7 @@ import { MlkitBundledEngine } from './ocr/mlkit-bundled.engine';
 import { MlkitUnbundledEngine } from './ocr/mlkit-unbundled.engine';
 import { TesseractEngine } from './ocr/tesseract.engine';
 import { VisionMlkitEngine } from './ocr/vision-mlkit.engine';
-import { NativeSpeechEngine } from './stt/native-speech.engine';
+import { NATIVE_SPEECH_CONFIGS, NativeSpeechEngine } from './stt/native-speech.engine';
 import { WebSpeechEngine } from './stt/web-speech.engine';
 
 /**
@@ -22,7 +22,12 @@ export class EngineRegistry {
     inject(TesseractEngine),
   ];
 
-  readonly stt: readonly SttEngine[] = [inject(NativeSpeechEngine), inject(WebSpeechEngine)];
+  // Las configuraciones nativas no necesitan inyección: son el mismo plugin
+  // con parámetros distintos, y cada una compite como motor propio.
+  readonly stt: readonly SttEngine[] = [
+    ...NATIVE_SPEECH_CONFIGS.map((config) => new NativeSpeechEngine(config)),
+    inject(WebSpeechEngine),
+  ];
 
   ocrById(id: string): OcrEngine | undefined {
     return this.ocr.find((e) => e.id === id);

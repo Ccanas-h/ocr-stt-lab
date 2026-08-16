@@ -1,6 +1,8 @@
 import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Capacitor } from '@capacitor/core';
+import { Device } from '@capacitor/device';
+import { Share } from '@capacitor/share';
 import {
   IonAccordion,
   IonAccordionGroup,
@@ -12,7 +14,6 @@ import {
   IonCardHeader,
   IonCardSubtitle,
   IonCardTitle,
-  IonCheckbox,
   IonChip,
   IonContent,
   IonHeader,
@@ -23,9 +24,10 @@ import {
   IonNote,
   IonRadio,
   IonRadioGroup,
+  IonSegment,
+  IonSegmentButton,
   IonSelect,
   IonSelectOption,
-  IonTextarea,
   IonTitle,
   IonToolbar,
   ToastController,
@@ -33,19 +35,29 @@ import {
 
 import { EngineRegistry } from '../../core/engines/engine-registry';
 import {
-  AccuracyScore,
   DEFAULT_NORMALIZATION,
   EngineSupport,
-  NormalizationOptions,
   Platform,
   SttEvent,
 } from '../../core/models/lab.models';
-import { percent, score } from '../../core/text/accuracy';
+import { LabPhrase, PHRASE_BANK } from '../../core/services/phrase-bank';
+import { percent } from '../../core/text/accuracy';
+import { scoreDictation, SttScore } from '../../core/text/stt-scoring';
 
-interface TranscriptEntry {
-  atMs: number;
-  kind: SttEvent['kind'];
-  text: string;
+/** Una toma: una frase, dictada con un motor, una vez. */
+interface Take {
+  at: string;
+  phraseId: string;
+  phraseText: string;
+  level: number;
+  engineId: string;
+  engineLabel: string;
+  language: string;
+  heard: string;
+  firstPartialMs?: number;
+  totalMs?: number;
+  expectedAmount: number;
+  score: SttScore;
 }
 
 @Component({
@@ -62,7 +74,6 @@ interface TranscriptEntry {
     IonCardHeader,
     IonCardSubtitle,
     IonCardTitle,
-    IonCheckbox,
     IonChip,
     IonContent,
     IonHeader,
@@ -73,9 +84,10 @@ interface TranscriptEntry {
     IonNote,
     IonRadio,
     IonRadioGroup,
+    IonSegment,
+    IonSegmentButton,
     IonSelect,
     IonSelectOption,
-    IonTextarea,
     IonTitle,
     IonToolbar,
   ],
@@ -88,22 +100,20 @@ export class SttPage implements OnDestroy {
 
   readonly platform = Capacitor.getPlatform() as Platform;
   readonly engines = this.registry.stt;
+  readonly phrases = PHRASE_BANK;
 
   readonly support = signal<Record<string, EngineSupport>>({});
   readonly engineId = signal<string>(this.engines[0]?.id ?? '');
-  readonly languages = signal<string[]>([]);
   readonly language = signal('es-CL');
-  readonly onDevice = signal(true);
-  readonly partialResults = signal(true);
+  readonly level = signal<1 | 2 | 3>(1);
+  readonly phraseId = signal<string>(PHRASE_BANK[0].id);
 
   readonly listening = signal(false);
   readonly liveText = signal('');
   readonly finalText = signal('');
-  readonly log = signal<TranscriptEntry[]>([]);
-  readonly groundTruth = signal('');
-  readonly normalization = signal<NormalizationOptions>({ ...DEFAULT_NORMALIZATION });
+  readonly log = signal<SttEvent[]>([]);
+  readonly takes = signal<Take[]>([]);
 
-  /** ms hasta el primer resultado parcial: la métrica de "sensación de rapidez". */
   readonly firstPartialMs = signal<number | undefined>(undefined);
   readonly totalMs = signal<number | undefined>(undefined);
 
@@ -111,18 +121,48 @@ export class SttPage implements OnDestroy {
   readonly currentSupport = computed(() => this.support()[this.engineId()]);
   readonly canListen = computed(() => this.currentSupport()?.available === true);
 
-  readonly accuracy = computed<AccuracyScore | undefined>(() =>
-    score(this.groundTruth(), this.finalText() || this.liveText(), this.normalization()),
+  readonly visiblePhrases = computed(() => this.phrases.filter((p) => p.level === this.level()));
+  readonly phrase = computed<LabPhrase>(
+    () => this.phrases.find((p) => p.id === this.phraseId()) ?? this.phrases[0],
   );
+
+  /** Puntaje de la toma en curso, en vivo. */
+  readonly currentScore = computed(() => {
+    const heard = this.finalText() || this.liveText();
+    if (!heard) return undefined;
+    return scoreDictation(this.phrase(), heard, DEFAULT_NORMALIZATION);
+  });
+
+  /** Resumen acumulado por motor: es la tabla que decide. */
+  readonly summary = computed(() => {
+    const byEngine = new Map<string, Take[]>();
+    for (const take of this.takes()) {
+      const list = byEngine.get(take.engineId) ?? [];
+      list.push(take);
+      byEngine.set(take.engineId, list);
+    }
+
+    return [...byEngine.entries()]
+      .map(([engineId, list]) => ({
+        engineId,
+        engineLabel: list[0].engineLabel,
+        takes: list.length,
+        amountAccuracy: list.filter((t) => t.score.amountCorrect).length / list.length,
+        termAccuracy: list.reduce((sum, t) => sum + t.score.keyTermScore, 0) / list.length,
+        similarity: list.reduce((sum, t) => sum + t.score.similarity, 0) / list.length,
+        medianFirstPartial: medianOf(
+          list.map((t) => t.firstPartialMs).filter((v): v is number => v !== undefined),
+        ),
+      }))
+      .sort((a, b) => b.amountAccuracy - a.amountAccuracy);
+  });
 
   constructor() {
     void this.probe();
   }
 
   ngOnDestroy(): void {
-    if (this.listening()) {
-      void this.engine()?.stop();
-    }
+    if (this.listening()) void this.engine()?.stop();
   }
 
   private async probe(): Promise<void> {
@@ -133,49 +173,47 @@ export class SttPage implements OnDestroy {
     this.support.set(map);
 
     const firstAvailable = this.engines.find((e) => map[e.id]?.available);
-    if (firstAvailable) {
-      this.engineId.set(firstAvailable.id);
-      await this.loadLanguages();
-    }
-  }
-
-  async onEngineChange(id: string): Promise<void> {
-    this.engineId.set(id);
-    this.reset();
-    await this.loadLanguages();
-  }
-
-  private async loadLanguages(): Promise<void> {
-    const engine = this.engine();
-    if (!engine) return;
-    const langs = await engine.getSupportedLanguages();
-    this.languages.set(langs);
-    // Si el dispositivo no declara nuestro idioma preferido, caemos al primero
-    // que sí ofrezca en vez de fallar al iniciar la sesión.
-    if (langs.length > 0 && !langs.includes(this.language())) {
-      const spanish = langs.find((l) => l.startsWith('es'));
-      this.language.set(spanish ?? langs[0]);
-    }
+    if (firstAvailable) this.engineId.set(firstAvailable.id);
   }
 
   supportOf(id: string): EngineSupport | undefined {
     return this.support()[id];
   }
 
+  onEngineChange(id: string): void {
+    this.engineId.set(id);
+    this.reset();
+  }
+
+  onLevelChange(level: 1 | 2 | 3): void {
+    this.level.set(level);
+    const first = this.visiblePhrases()[0];
+    if (first) this.selectPhrase(first.id);
+  }
+
+  selectPhrase(id: string): void {
+    this.phraseId.set(id);
+    this.reset();
+  }
+
+  /** Pasa a la frase siguiente del nivel, para encadenar tomas sin buscar. */
+  nextPhrase(): void {
+    const list = this.visiblePhrases();
+    const index = list.findIndex((p) => p.id === this.phraseId());
+    const next = list[(index + 1) % list.length];
+    if (next) this.selectPhrase(next.id);
+  }
+
   async toggleListening(): Promise<void> {
-    if (this.listening()) {
-      await this.stop();
-    } else {
-      await this.start();
-    }
+    if (this.listening()) await this.stop();
+    else await this.start();
   }
 
   private async start(): Promise<void> {
     const engine = this.engine();
     if (!engine) return;
 
-    const granted = await engine.requestPermissions();
-    if (!granted) {
+    if (!(await engine.requestPermissions())) {
       await this.notify('Permiso de micrófono denegado.', 'danger');
       return;
     }
@@ -187,15 +225,15 @@ export class SttPage implements OnDestroy {
       await engine.start(
         {
           language: this.language(),
-          partialResults: this.partialResults(),
-          onDevice: this.onDevice(),
+          partialResults: true,
+          onDevice: false, // lo fija la configuración del motor, no la pantalla
           maxResults: 5,
         },
         (event) => this.onEvent(event),
       );
     } catch (error) {
       this.listening.set(false);
-      await this.notify(error instanceof Error ? error.message : String(error), 'danger');
+      await this.notify(this.describe(error), 'danger');
     }
   }
 
@@ -204,25 +242,17 @@ export class SttPage implements OnDestroy {
     if (!engine) return;
     try {
       const matches = await engine.stop();
-      if (matches.length > 0) {
-        this.finalText.set(matches[0]);
-      } else if (this.liveText()) {
-        // Algunos reconocedores no reemiten el texto al detener: conservamos
-        // el último parcial en vez de mostrar la pantalla vacía.
-        this.finalText.set(this.liveText());
-      }
+      if (matches.length > 0) this.finalText.set(matches[0]);
+      else if (this.liveText()) this.finalText.set(this.liveText());
     } catch (error) {
-      await this.notify(error instanceof Error ? error.message : String(error), 'danger');
+      await this.notify(this.describe(error), 'danger');
     } finally {
       this.listening.set(false);
     }
   }
 
   private onEvent(event: SttEvent): void {
-    this.log.update((entries) => [
-      ...entries,
-      { atMs: event.atMs, kind: event.kind, text: event.text ?? event.state ?? event.message ?? '' },
-    ]);
+    this.log.update((entries) => [...entries, event]);
 
     switch (event.kind) {
       case 'partial':
@@ -244,6 +274,39 @@ export class SttPage implements OnDestroy {
     }
   }
 
+  /** Guarda la toma actual en el registro y avanza a la frase siguiente. */
+  async saveTake(): Promise<void> {
+    const heard = this.finalText() || this.liveText();
+    const engine = this.engine();
+    if (!heard || !engine) return;
+
+    const phrase = this.phrase();
+    this.takes.update((list) => [
+      ...list,
+      {
+        at: new Date().toISOString(),
+        phraseId: phrase.id,
+        phraseText: phrase.text,
+        level: phrase.level,
+        engineId: engine.id,
+        engineLabel: engine.label,
+        language: this.language(),
+        heard,
+        firstPartialMs: this.firstPartialMs(),
+        totalMs: this.totalMs(),
+        expectedAmount: phrase.amount,
+        score: scoreDictation(phrase, heard, DEFAULT_NORMALIZATION),
+      },
+    ]);
+
+    await this.notify(`Toma guardada (${this.takes().length} en total).`, 'success');
+    this.nextPhrase();
+  }
+
+  discardTakes(): void {
+    this.takes.set([]);
+  }
+
   reset(): void {
     this.liveText.set('');
     this.finalText.set('');
@@ -252,14 +315,58 @@ export class SttPage implements OnDestroy {
     this.totalMs.set(undefined);
   }
 
-  setNormalization(key: keyof NormalizationOptions, value: boolean): void {
-    this.normalization.set({ ...this.normalization(), [key]: value });
+  // -- Exportación ------------------------------------------------------------
+
+  async exportMarkdown(): Promise<void> {
+    if (this.takes().length === 0) return;
+    const info = await Device.getInfo();
+    const markdown = this.toMarkdown(`${info.manufacturer ?? ''} ${info.model}`.trim(),
+      `${info.operatingSystem} ${info.osVersion}`);
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await Share.share({ title: 'Resultados de voz', text: markdown });
+      } else {
+        await navigator.clipboard.writeText(markdown);
+        await this.notify('Tabla copiada.', 'success');
+      }
+    } catch (error) {
+      await this.notify(this.describe(error), 'danger');
+    }
   }
 
-  async copyTranscript(): Promise<void> {
-    await navigator.clipboard.writeText(this.finalText() || this.liveText());
-    await this.notify('Transcripción copiada.', 'success');
+  private toMarkdown(device: string, os: string): string {
+    const lines: string[] = [];
+    lines.push(`### ${device} · ${os}`);
+    lines.push('');
+    lines.push(`${this.takes().length} tomas · idioma ${this.language()}`);
+    lines.push('');
+    lines.push('| Motor | Tomas | Monto correcto | Términos clave | Similitud | 1.er parcial |');
+    lines.push('| --- | --- | --- | --- | --- | --- |');
+    for (const row of this.summary()) {
+      lines.push(
+        `| ${row.engineLabel} | ${row.takes} | ${percent(row.amountAccuracy)} | ` +
+          `${percent(row.termAccuracy)} | ${percent(row.similarity)} | ${row.medianFirstPartial} ms |`,
+      );
+    }
+    lines.push('');
+    lines.push('<details><summary>Detalle por toma</summary>');
+    lines.push('');
+    lines.push('| Frase | Motor | Esperado | Entendido | Transcripción |');
+    lines.push('| --- | --- | --- | --- | --- |');
+    for (const take of this.takes()) {
+      const heardAmount = take.score.heardAmount ?? '—';
+      const mark = take.score.amountCorrect ? '✅' : '❌';
+      lines.push(
+        `| ${take.phraseId} | ${take.engineLabel} | ${take.expectedAmount} | ` +
+          `${mark} ${heardAmount} | ${take.heard.replace(/\|/g, '\\|')} |`,
+      );
+    }
+    lines.push('');
+    lines.push('</details>');
+    return lines.join('\n');
   }
+
+  // -- Presentación -----------------------------------------------------------
 
   pct(value: number | undefined): string {
     return value === undefined ? '—' : percent(value);
@@ -269,8 +376,25 @@ export class SttPage implements OnDestroy {
     return backend[this.platform];
   }
 
+  takesFor(engineId: string): number {
+    return this.takes().filter((t) => t.engineId === engineId).length;
+  }
+
+  private describe(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
   private async notify(message: string, color: string): Promise<void> {
-    const toast = await this.toasts.create({ message, color, duration: 2600, position: 'bottom' });
+    const toast = await this.toasts.create({ message, color, duration: 2200, position: 'top' });
     await toast.present();
   }
+}
+
+function medianOf(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return Math.round(
+    sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid],
+  );
 }

@@ -12,17 +12,110 @@
   }
 }
 
-.lab-log-line {
-  margin: 0 0 0.3rem;
+/* La frase a leer es lo único que el usuario mira mientras dicta. */
+.lab-dictation .lab-phrase {
+  margin: 0.25rem 0 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  background: var(--ion-color-light);
+  color: var(--ion-color-dark);
+  font-size: 1.05rem;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.lab-ok {
+  color: var(--ion-color-success);
+}
+
+.lab-bad {
+  color: var(--ion-color-danger);
+}
+
+.lab-keyfields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.25rem 0 0.75rem;
+
+  ion-chip {
+    margin: 0;
+    font-size: 0.72rem;
+    height: 1.6rem;
+  }
+}
+
+.lab-take {
+  margin: 0 0 0.5rem;
+  line-height: 1.4;
+
+  ion-icon {
+    vertical-align: -3px;
+    margin-right: 0.3rem;
+  }
 
   ion-note {
-    display: inline-block;
-    min-width: 4.5rem;
+    display: block;
+    font-size: 0.7rem;
   }
 
-  strong {
-    display: inline-block;
-    min-width: 4rem;
-    color: var(--ion-color-primary);
+  span {
+    display: block;
+    font-size: 0.75rem;
   }
+}
+
+.lab-table-scroll {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.lab-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 26rem;
+  font-size: 0.78rem;
+
+  th,
+  td {
+    padding: 0.45rem 0.55rem;
+    border-bottom: 1px solid var(--ion-color-step-150, #e0e0e0);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  thead th {
+    font-weight: 600;
+    color: var(--ion-color-medium);
+    font-size: 0.7rem;
+  }
+
+  tbody th {
+    font-weight: 500;
+    max-width: 9rem;
+  }
+
+  td {
+    white-space: nowrap;
+
+    strong {
+      display: block;
+      font-family: var(--lab-mono);
+      font-size: 0.95rem;
+    }
+
+    small {
+      display: block;
+      color: var(--ion-color-medium);
+      font-size: 0.68rem;
+    }
+  }
+}
+
+code {
+  font-family: var(--lab-mono);
+  font-size: 0.75rem;
+  padding: 0.05rem 0.25rem;
+  border-radius: 4px;
+  background: var(--ion-color-light);
 }

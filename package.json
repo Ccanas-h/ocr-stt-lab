@@ -14,7 +14,8 @@
     "open:android": "npx cap open android",
     "open:ios": "npx cap open ios",
     "stt:use-community": "npm uninstall @capgo/capacitor-speech-recognition && npm i @capacitor-community/speech-recognition && npx cap sync",
-    "stt:use-capgo": "npm uninstall @capacitor-community/speech-recognition && npm i @capgo/capacitor-speech-recognition && npx cap sync"
+    "stt:use-capgo": "npm uninstall @capacitor-community/speech-recognition && npm i @capgo/capacitor-speech-recognition && npx cap sync",
+    "postinstall": "patch-package"
   },
   "prettier": {
     "printWidth": 100,
@@ -69,6 +70,7 @@
     "karma-coverage": "~2.2.0",
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   }
 }

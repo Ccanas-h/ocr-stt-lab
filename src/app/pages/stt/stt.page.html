@@ -2,7 +2,12 @@
   <ion-toolbar>
     <ion-title>Voz → texto</ion-title>
     <ion-buttons slot="end">
-      <ion-button (click)="reset()" title="Limpiar">
+      @if (takes().length > 0) {
+        <ion-button (click)="exportMarkdown()" title="Exportar resultados">
+          <ion-icon slot="icon-only" name="share-outline" />
+        </ion-button>
+      }
+      <ion-button (click)="reset()" title="Limpiar toma actual">
         <ion-icon slot="icon-only" name="refresh-outline" />
       </ion-button>
     </ion-buttons>
@@ -14,9 +19,15 @@
   <ion-card>
     <ion-card-header>
       <ion-card-subtitle>Paso 1</ion-card-subtitle>
-      <ion-card-title>Motor de reconocimiento</ion-card-title>
+      <ion-card-title>Configuración a probar</ion-card-title>
     </ion-card-header>
     <ion-card-content>
+      <p class="lab-hint">
+        En Android todos los plugins terminan en la misma API del sistema
+        (<code>SpeechRecognizer</code>). Lo que sí son motores distintos son estas
+        configuraciones, y por eso compiten como filas separadas.
+      </p>
+
       <ion-radio-group
         [value]="engineId()"
         (ionChange)="onEngineChange($any($event.detail.value))"
@@ -35,6 +46,9 @@
                   <p>{{ engine.vendor }}</p>
                 </ion-label>
               </ion-radio>
+              @if (takesFor(engine.id) > 0) {
+                <ion-badge slot="end" color="primary">{{ takesFor(engine.id) }}</ion-badge>
+              }
             </ion-item>
             <ion-item lines="none" class="lab-engine-detail">
               <ion-label class="ion-text-wrap">
@@ -47,7 +61,7 @@
                 <p class="lab-hint">{{ engine.notes }}</p>
                 @if (supportOf(engine.id); as s) {
                   @if (!s.available) {
-                    <ion-badge color="medium">{{ s.reason }}</ion-badge>
+                    <ion-badge color="medium" class="ion-text-wrap">{{ s.reason }}</ion-badge>
                   }
                 }
               </ion-label>
@@ -55,199 +69,178 @@
           }
         </ion-list>
       </ion-radio-group>
+
+      <ion-item>
+        <ion-select
+          label="Idioma"
+          labelPlacement="stacked"
+          interface="popover"
+          [value]="language()"
+          (ionChange)="language.set($any($event.detail.value))"
+        >
+          <ion-select-option value="es-CL">es-CL (Chile)</ion-select-option>
+          <ion-select-option value="es-ES">es-ES (España)</ion-select-option>
+          <ion-select-option value="es-US">es-US (el del sistema)</ion-select-option>
+          <ion-select-option value="es-MX">es-MX (México)</ion-select-option>
+        </ion-select>
+      </ion-item>
     </ion-card-content>
   </ion-card>
 
-  <!-- 2 · Parámetros ------------------------------------------------------ -->
+  <!-- 2 · Frase ----------------------------------------------------------- -->
   <ion-card>
     <ion-card-header>
       <ion-card-subtitle>Paso 2</ion-card-subtitle>
-      <ion-card-title>Parámetros</ion-card-title>
+      <ion-card-title>Frase a dictar</ion-card-title>
     </ion-card-header>
     <ion-card-content>
-      @if (languages().length > 0) {
-        <ion-item>
-          <ion-select
-            label="Idioma"
-            labelPlacement="stacked"
-            interface="popover"
-            [value]="language()"
-            (ionChange)="language.set($any($event.detail.value))"
-          >
-            @for (lang of languages(); track lang) {
-              <ion-select-option [value]="lang">{{ lang }}</ion-select-option>
-            }
-          </ion-select>
-        </ion-item>
-      } @else {
-        <ion-item>
-          <ion-select
-            label="Idioma"
-            labelPlacement="stacked"
-            interface="popover"
-            [value]="language()"
-            (ionChange)="language.set($any($event.detail.value))"
-          >
-            <ion-select-option value="es-CL">es-CL</ion-select-option>
-            <ion-select-option value="es-ES">es-ES</ion-select-option>
-            <ion-select-option value="es-MX">es-MX</ion-select-option>
-            <ion-select-option value="en-US">en-US</ion-select-option>
-          </ion-select>
-        </ion-item>
-        <p class="lab-hint">
-          El dispositivo no expuso su lista de idiomas (habitual en varias capas de Android):
-          se ofrecen los códigos más frecuentes.
-        </p>
-      }
+      <ion-segment
+        [value]="level()"
+        (ionChange)="onLevelChange($any($event.detail.value))"
+      >
+        <ion-segment-button [value]="1"><ion-label>Nivel 1</ion-label></ion-segment-button>
+        <ion-segment-button [value]="2"><ion-label>Nivel 2</ion-label></ion-segment-button>
+        <ion-segment-button [value]="3"><ion-label>Nivel 3</ion-label></ion-segment-button>
+      </ion-segment>
 
-      <ion-item>
-        <ion-checkbox
-          justify="space-between"
-          [checked]="onDevice()"
-          (ionChange)="onDevice.set($event.detail.checked)"
-        >
-          Reconocimiento 100 % en el dispositivo
-        </ion-checkbox>
-      </ion-item>
-      <p class="lab-hint">
-        Activado, el audio nunca sale del teléfono, pero exige que el idioma esté descargado.
-        Desactivado, el motor del fabricante puede transcribir en la nube: más preciso, pero
-        con red de por medio y con implicancias de privacidad.
-      </p>
-
-      <ion-item lines="none">
-        <ion-checkbox
-          justify="space-between"
-          [checked]="partialResults()"
-          (ionChange)="partialResults.set($event.detail.checked)"
-        >
-          Resultados parciales en vivo
-        </ion-checkbox>
-      </ion-item>
+      <ion-list lines="full">
+        @for (p of visiblePhrases(); track p.id) {
+          <ion-item button [color]="p.id === phraseId() ? 'light' : undefined" (click)="selectPhrase(p.id)">
+            <ion-label class="ion-text-wrap">
+              <h3>{{ p.text }}</h3>
+              <p>~{{ p.seconds }} s · monto esperado {{ p.amount }}</p>
+            </ion-label>
+          </ion-item>
+        }
+      </ion-list>
     </ion-card-content>
   </ion-card>
 
-  <!-- 3 · Captura --------------------------------------------------------- -->
-  <ion-button
-    expand="block"
-    size="large"
-    [color]="listening() ? 'danger' : 'primary'"
-    [disabled]="!canListen()"
-    (click)="toggleListening()"
-  >
-    <ion-icon slot="start" [name]="listening() ? 'stop-circle' : 'mic-outline'" />
-    {{ listening() ? 'Detener' : 'Empezar a escuchar' }}
-  </ion-button>
-
-  @if (listening()) {
-    <ion-chip color="danger" class="ion-margin-top">
-      <ion-icon name="radio-button-on" />
-      <ion-label>Escuchando…</ion-label>
-    </ion-chip>
-  }
-
-  <!-- 4 · Resultado ------------------------------------------------------- -->
-  <ion-card>
-    <ion-card-header>
-      <ion-card-subtitle>Paso 3</ion-card-subtitle>
-      <ion-card-title>Transcripción</ion-card-title>
-    </ion-card-header>
+  <!-- 3 · Dictado --------------------------------------------------------- -->
+  <ion-card class="lab-dictation">
     <ion-card-content>
-      <div class="lab-metric-row">
-        <span class="lab-metric">
-          <strong>{{ firstPartialMs() ?? '—' }}</strong><small>ms al 1.er parcial</small>
-        </span>
-        <span class="lab-metric">
-          <strong>{{ totalMs() ?? '—' }}</strong><small>ms totales</small>
-        </span>
-        <span class="lab-metric">
-          <strong>{{ (finalText() || liveText()).length }}</strong><small>caracteres</small>
-        </span>
-      </div>
+      <p class="lab-hint">Lee esto en voz alta, tal cual:</p>
+      <p class="lab-phrase">{{ phrase().text }}</p>
 
-      <div class="lab-output lab-mono">{{
+      <ion-button
+        expand="block"
+        size="large"
+        [color]="listening() ? 'danger' : 'primary'"
+        [disabled]="!canListen()"
+        (click)="toggleListening()"
+      >
+        <ion-icon slot="start" [name]="listening() ? 'stop-circle' : 'mic-outline'" />
+        {{ listening() ? 'Detener' : 'Dictar' }}
+      </ion-button>
+
+      @if (listening()) {
+        <ion-chip color="danger" class="ion-margin-top">
+          <ion-icon name="radio-button-on" />
+          <ion-label>Escuchando…</ion-label>
+        </ion-chip>
+      }
+
+      <div class="lab-output lab-mono ion-margin-top">{{
         finalText() || liveText() || '(sin transcripción todavía)'
       }}</div>
 
-      <ion-button size="small" fill="clear" (click)="copyTranscript()">
-        <ion-icon slot="start" name="copy-outline" />
-        Copiar
-      </ion-button>
-
-      <ion-item lines="none">
-        <ion-textarea
-          label="Texto que dictaste (referencia)"
-          labelPlacement="stacked"
-          [autoGrow]="true"
-          [rows]="3"
-          placeholder="Escribe aquí la frase exacta que vas a dictar para medir la precisión."
-          [value]="groundTruth()"
-          (ionInput)="groundTruth.set($any($event.detail.value ?? ''))"
-        />
-      </ion-item>
-
-      @if (accuracy(); as acc) {
+      @if (currentScore(); as s) {
         <div class="lab-metric-row">
-          <span class="lab-metric"><strong>{{ pct(acc.similarity) }}</strong><small>similitud</small></span>
-          <span class="lab-metric"><strong>{{ pct(acc.cer) }}</strong><small>error car. (CER)</small></span>
-          <span class="lab-metric"><strong>{{ pct(acc.wer) }}</strong><small>error palab. (WER)</small></span>
-          <span class="lab-metric"><strong>{{ acc.hypWords }}/{{ acc.refWords }}</strong><small>palabras</small></span>
+          <span class="lab-metric">
+            <strong [class.lab-ok]="s.amountCorrect" [class.lab-bad]="!s.amountCorrect">
+              {{ s.heardAmount ?? '—' }}
+            </strong>
+            <small>monto (esperado {{ phrase().amount }})</small>
+          </span>
+          <span class="lab-metric"><strong>{{ pct(s.similarity) }}</strong><small>similitud</small></span>
+          <span class="lab-metric"><strong>{{ pct(s.wer) }}</strong><small>error palabras</small></span>
+          <span class="lab-metric">
+            <strong>{{ firstPartialMs() ?? '—' }}</strong><small>ms al 1.er parcial</small>
+          </span>
         </div>
+
+        <div class="lab-keyfields">
+          @for (term of s.keyTerms; track term.value) {
+            <ion-chip [color]="term.found ? 'success' : 'danger'" [outline]="!term.found">
+              <ion-icon [name]="term.found ? 'checkmark' : 'close'" />
+              <ion-label>{{ term.value }}</ion-label>
+            </ion-chip>
+          }
+        </div>
+
+        <ion-button expand="block" fill="outline" (click)="saveTake()">
+          <ion-icon slot="start" name="add-circle-outline" />
+          Guardar toma y pasar a la siguiente
+        </ion-button>
       }
-
-      <ion-accordion-group>
-        <ion-accordion value="norm">
-          <ion-item slot="header" lines="none">
-            <ion-label>Reglas de comparación</ion-label>
-          </ion-item>
-          <div slot="content">
-            <ion-item>
-              <ion-checkbox
-                justify="space-between"
-                [checked]="normalization().lowercase"
-                (ionChange)="setNormalization('lowercase', $event.detail.checked)"
-              >
-                Ignorar mayúsculas
-              </ion-checkbox>
-            </ion-item>
-            <ion-item>
-              <ion-checkbox
-                justify="space-between"
-                [checked]="normalization().stripAccents"
-                (ionChange)="setNormalization('stripAccents', $event.detail.checked)"
-              >
-                Ignorar tildes
-              </ion-checkbox>
-            </ion-item>
-            <ion-item lines="none">
-              <ion-checkbox
-                justify="space-between"
-                [checked]="normalization().stripPunctuation"
-                (ionChange)="setNormalization('stripPunctuation', $event.detail.checked)"
-              >
-                Ignorar puntuación
-              </ion-checkbox>
-            </ion-item>
-          </div>
-        </ion-accordion>
-
-        <ion-accordion value="log">
-          <ion-item slot="header" lines="none">
-            <ion-label>Traza de eventos ({{ log().length }})</ion-label>
-          </ion-item>
-          <div slot="content" class="ion-padding-horizontal ion-padding-bottom">
-            @for (entry of log(); track $index) {
-              <p class="lab-mono lab-log-line">
-                <ion-note>{{ entry.atMs }} ms</ion-note>
-                <strong>{{ entry.kind }}</strong>
-                {{ entry.text }}
-              </p>
-            } @empty {
-              <p class="lab-hint">Todavía no hay eventos.</p>
-            }
-          </div>
-        </ion-accordion>
-      </ion-accordion-group>
     </ion-card-content>
   </ion-card>
+
+  <!-- 4 · Resumen --------------------------------------------------------- -->
+  @if (takes().length > 0) {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-subtitle>{{ takes().length }} tomas registradas</ion-card-subtitle>
+        <ion-card-title>Resumen por configuración</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p class="lab-hint">
+          El monto es el dato que no se puede equivocar: un comercio mal escrito el usuario
+          lo corrige de un vistazo, un monto errado se cuela al presupuesto.
+        </p>
+
+        <div class="lab-table-scroll">
+          <table class="lab-table">
+            <thead>
+              <tr>
+                <th>Configuración</th>
+                <th>Tomas</th>
+                <th>Monto</th>
+                <th>Términos</th>
+                <th>Similitud</th>
+                <th>1.er parcial</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of summary(); track row.engineId) {
+                <tr>
+                  <th scope="row">{{ row.engineLabel }}</th>
+                  <td><small>{{ row.takes }}</small></td>
+                  <td><strong>{{ pct(row.amountAccuracy) }}</strong></td>
+                  <td><strong>{{ pct(row.termAccuracy) }}</strong></td>
+                  <td><strong>{{ pct(row.similarity) }}</strong></td>
+                  <td><strong>{{ row.medianFirstPartial }}</strong><small>ms</small></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <ion-accordion-group>
+          <ion-accordion value="takes">
+            <ion-item slot="header" lines="none">
+              <ion-label>Detalle por toma</ion-label>
+            </ion-item>
+            <div slot="content" class="ion-padding-horizontal ion-padding-bottom">
+              @for (take of takes(); track $index) {
+                <p class="lab-take">
+                  <ion-icon
+                    [name]="take.score.amountCorrect ? 'checkmark-circle' : 'close-circle'"
+                    [color]="take.score.amountCorrect ? 'success' : 'danger'"
+                  />
+                  <ion-note>{{ take.phraseId }} · {{ take.engineLabel }}</ion-note>
+                  <span class="lab-mono">{{ take.heard }}</span>
+                </p>
+              }
+            </div>
+          </ion-accordion>
+        </ion-accordion-group>
+
+        <ion-button size="small" fill="clear" color="medium" (click)="discardTakes()">
+          <ion-icon slot="start" name="trash-outline" />
+          Descartar registro
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
 </ion-content>

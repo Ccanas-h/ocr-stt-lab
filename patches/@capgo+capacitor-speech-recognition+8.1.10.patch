@@ -1,0 +1,28 @@
+diff --git a/node_modules/@capgo/capacitor-speech-recognition/android/src/main/java/app/capgo/speechrecognition/SpeechRecognitionPlugin.java b/node_modules/@capgo/capacitor-speech-recognition/android/src/main/java/app/capgo/speechrecognition/SpeechRecognitionPlugin.java
+index 37e1561..5faf230 100644
+--- a/node_modules/@capgo/capacitor-speech-recognition/android/src/main/java/app/capgo/speechrecognition/SpeechRecognitionPlugin.java
++++ b/node_modules/@capgo/capacitor-speech-recognition/android/src/main/java/app/capgo/speechrecognition/SpeechRecognitionPlugin.java
+@@ -111,6 +111,14 @@ public class SpeechRecognitionPlugin extends Plugin implements Constants {
+ 
+     @PluginMethod
+     public void isOnDeviceRecognitionAvailable(PluginCall call) {
++        // SpeechRecognizer.createOnDeviceSpeechRecognizer() exige el hilo
++        // principal y lanza RuntimeException (no UnsupportedOperationException)
++        // si se llama desde otro. Capacitor ejecuta los @PluginMethod en un
++        // hilo de fondo, asi que sin este salto la app se cae del todo.
++        bridge.getActivity().runOnUiThread(() -> isOnDeviceRecognitionAvailableOnMainThread(call));
++    }
++
++    private void isOnDeviceRecognitionAvailableOnMainThread(PluginCall call) {
+         String language = call.getString("language", Locale.getDefault().toLanguageTag());
+         if (!canUseOnDeviceRecognition()) {
+             call.resolve(new JSObject().put("available", false));
+@@ -120,7 +128,7 @@ public class SpeechRecognitionPlugin extends Plugin implements Constants {
+         final SpeechRecognizer supportChecker;
+         try {
+             supportChecker = SpeechRecognizer.createOnDeviceSpeechRecognizer(bridge.getActivity());
+-        } catch (UnsupportedOperationException ex) {
++        } catch (RuntimeException ex) {
+             call.resolve(new JSObject().put("available", false));
+             return;
+         }

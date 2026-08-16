@@ -1,4 +1,3 @@
-import { Injectable } from '@angular/core';
 import { Capacitor, PluginListenerHandle } from '@capacitor/core';
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
 import {
@@ -10,32 +9,47 @@ import {
 } from '../../models/lab.models';
 
 /**
- * Reconocimiento de voz nativo del sistema operativo.
+ * Configuración fija de un motor de voz.
  *
- * Android usa `android.speech.SpeechRecognizer` e iOS `SFSpeechRecognizer`
- * (o el pipeline `SpeechAnalyzer` de iOS 26+ cuando se pide modo on-device).
- * Igual que en OCR, no hay microservicio: todo es capacidad del sistema.
- *
- * Ojo con `onDevice`: apagado, el motor puede enviar audio a los servidores
- * del fabricante. Encendido, el reconocimiento es 100 % local pero exige que
- * el idioma esté descargado en el dispositivo.
+ * En Android **todos los plugins terminan en la misma API del sistema**
+ * (`android.speech.SpeechRecognizer`), igual que los tres plugins de OCR
+ * resultaron ser el mismo ML Kit. Lo que sí son motores distintos son estas
+ * configuraciones, y por eso cada una se expone como un motor separado en vez
+ * de esconderse tras un interruptor.
  */
-@Injectable({ providedIn: 'root' })
+export interface NativeSpeechConfig {
+  id: string;
+  label: string;
+  notes: string;
+  androidBackend: string;
+  iosBackend: string;
+  /** Fuerza el reconocedor local del sistema. */
+  onDevice: boolean;
+  /** Usa el diálogo del sistema en vez del reconocimiento en línea. */
+  popup: boolean;
+}
+
 export class NativeSpeechEngine implements SttEngine {
-  readonly id = 'native-speech';
-  readonly label = 'Reconocimiento nativo del SO';
+  readonly id: string;
+  readonly label: string;
   readonly vendor = 'Google + Apple · Capgo';
   readonly pkg = '@capgo/capacitor-speech-recognition';
-  readonly backend: Record<Platform, string> = {
-    android: 'android.speech.SpeechRecognizer',
-    ios: 'SFSpeechRecognizer / SpeechAnalyzer (iOS 26+)',
-    web: 'no soportado',
-  };
-  readonly notes =
-    'Resultados parciales en vivo, modo on-device opcional y sesiones segmentadas por silencio. Requiere permiso de micrófono (y de reconocimiento de voz en iOS).';
+  readonly backend: Record<Platform, string>;
+  readonly notes: string;
 
   private listeners: PluginListenerHandle[] = [];
   private startedAt = 0;
+
+  constructor(private readonly config: NativeSpeechConfig) {
+    this.id = config.id;
+    this.label = config.label;
+    this.notes = config.notes;
+    this.backend = {
+      android: config.androidBackend,
+      ios: config.iosBackend,
+      web: 'no soportado',
+    };
+  }
 
   async isSupported(): Promise<EngineSupport> {
     if (Capacitor.getPlatform() === 'web') {
@@ -45,12 +59,38 @@ export class NativeSpeechEngine implements SttEngine {
         reason: 'El plugin no implementa la plataforma web. Use el motor Web Speech API.',
       };
     }
+
     const { available } = await SpeechRecognition.available();
-    return {
-      available,
-      native: true,
-      reason: available ? undefined : 'El dispositivo no expone un reconocedor de voz.',
-    };
+    if (!available) {
+      return { available: false, native: true, reason: 'El dispositivo no expone un reconocedor.' };
+    }
+
+    // El diálogo del sistema no tiene modo local: si esta configuración pide
+    // on-device, hay que confirmar que el idioma esté realmente descargado.
+    // Si no lo está, el sistema cae a red **sin avisar** y la medición mentiría.
+    if (this.config.onDevice) {
+      try {
+        const onDevice = await SpeechRecognition.isOnDeviceRecognitionAvailable({
+          language: 'es-CL',
+        });
+        if (!onDevice.available) {
+          return {
+            available: false,
+            native: true,
+            reason:
+              'El paquete de español para reconocimiento local no está descargado. Ajustes → Google → Voz → Reconocimiento sin conexión.',
+          };
+        }
+      } catch {
+        return {
+          available: false,
+          native: true,
+          reason: 'Esta versión de Android no expone reconocimiento local.',
+        };
+      }
+    }
+
+    return { available: true, native: true };
   }
 
   async requestPermissions(): Promise<boolean> {
@@ -63,7 +103,7 @@ export class NativeSpeechEngine implements SttEngine {
       const { languages } = await SpeechRecognition.getSupportedLanguages();
       return languages ?? [];
     } catch {
-      // Varios fabricantes Android no implementan la consulta de idiomas.
+      // Varias capas de Android no implementan la consulta de idiomas.
       return [];
     }
   }
@@ -95,24 +135,19 @@ export class NativeSpeechEngine implements SttEngine {
       }),
     );
 
-    // `start()` resuelve con las coincidencias finales en Android; en iOS
-    // resuelve al iniciar. Tratamos el resultado como opcional y dejamos que
-    // `stop()` sea la fuente de verdad del texto final.
+    // En Android `start()` resuelve con las coincidencias finales; en iOS
+    // resuelve al iniciar. Se trata el resultado como opcional y `stop()`
+    // queda como fuente de verdad del texto final.
     const result = await SpeechRecognition.start({
       language: options.language,
       maxResults: options.maxResults,
-      partialResults: options.partialResults,
-      popup: false,
-      useOnDeviceRecognition: options.onDevice,
+      partialResults: options.partialResults && !this.config.popup,
+      popup: this.config.popup,
+      useOnDeviceRecognition: this.config.onDevice,
     });
 
     if (result?.matches?.length) {
-      onEvent({
-        kind: 'final',
-        text: result.matches[0],
-        matches: result.matches,
-        atMs: at(),
-      });
+      onEvent({ kind: 'final', text: result.matches[0], matches: result.matches, atMs: at() });
     }
   }
 
@@ -138,3 +173,42 @@ export class NativeSpeechEngine implements SttEngine {
     this.listeners = [];
   }
 }
+
+/**
+ * Las tres configuraciones que sí son motores distintos en Android.
+ *
+ * Ordenadas por preferencia para el caso de uso: el audio de alguien diciendo
+ * en qué gastó no debería salir del teléfono si el modo local alcanza.
+ */
+export const NATIVE_SPEECH_CONFIGS: readonly NativeSpeechConfig[] = [
+  {
+    id: 'speech-ondevice',
+    label: 'Google on-device (local)',
+    onDevice: true,
+    popup: false,
+    androidBackend: 'SpeechRecognizer.createOnDeviceSpeechRecognizer (API 31+)',
+    iosBackend: 'SFSpeechRecognizer / SpeechAnalyzer con requiresOnDeviceRecognition',
+    notes:
+      'El audio nunca sale del teléfono. Exige que el paquete de idioma esté descargado; si no lo está, el sistema cae a red sin avisar.',
+  },
+  {
+    id: 'speech-network',
+    label: 'Google en red',
+    onDevice: false,
+    popup: false,
+    androidBackend: 'SpeechRecognizer con el servicio por defecto (app de Google)',
+    iosBackend: 'SFSpeechRecognizer con reconocimiento en servidor',
+    notes:
+      'Normalmente el más preciso, sobre todo con nombres propios. El audio se envía a servidores de Google: hay que declararlo en la política de privacidad.',
+  },
+  {
+    id: 'speech-dialog',
+    label: 'Diálogo del sistema',
+    onDevice: false,
+    popup: true,
+    androidBackend: 'RecognizerIntent.ACTION_RECOGNIZE_SPEECH',
+    iosBackend: 'no aplica (opción sólo de Android)',
+    notes:
+      'Abre la interfaz de Google. No entrega resultados parciales ni permite personalizar la pantalla, pero es la ruta con menos código y la que el usuario ya reconoce.',
+  },
+];

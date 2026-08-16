@@ -7,6 +7,87 @@ no son comparables entre sí.
 
 ---
 
+# Parte 2 · Voz → texto
+
+Plan completo en [PLAN-VOZ.md](PLAN-VOZ.md).
+
+## Hallazgos previos al primer dictado
+
+Dos cosas aparecieron al instrumentar, antes de grabar una sola frase. Ambas habrían
+falseado la medición si no se detectan.
+
+### 1. Bug del plugin: `isOnDeviceRecognitionAvailable()` tira la app abajo
+
+`@capgo/capacitor-speech-recognition@8.1.10` —la última publicada— llama a
+`SpeechRecognizer.createOnDeviceSpeechRecognizer()` desde el hilo de fondo en el que
+Capacitor ejecuta los `@PluginMethod`. Android lo prohíbe:
+
+```
+FATAL EXCEPTION: CapacitorPlugins
+java.lang.RuntimeException: SpeechRecognizer should be used only from the application's main thread
+  at android.speech.SpeechRecognizer.checkIsCalledFromMainThread
+  at app.capgo.speechrecognition.SpeechRecognitionPlugin.isOnDeviceRecognitionAvailable:122
+```
+
+No es una excepción capturable desde JavaScript: **es un crash nativo que cierra la app**.
+El `try/catch` del plugin atrapa `UnsupportedOperationException`, no `RuntimeException`,
+así que no sirve de nada.
+
+Corregido en [`patches/@capgo+capacitor-speech-recognition+8.1.10.patch`](patches/):
+el método salta al hilo principal antes de crear el reconocedor, y el `catch` se amplía a
+`RuntimeException`. Se aplica solo en `npm install` vía `patch-package`.
+
+`start()` **no** tiene el problema: internamente hace `bridge.getWebView().post(...)`, que
+sí corre en el hilo principal. El bug está aislado en el chequeo de disponibilidad.
+
+> Vale la pena registrarlo como criterio de elección: un plugin cuya consulta de
+> capacidades cierra la aplicación es una señal de madurez, no un detalle.
+
+### 2. El español on-device NO está instalado en el S20+
+
+Con el parche puesto, la app responde correctamente:
+
+> «El paquete de español para reconocimiento local no está descargado.
+> Ajustes → Google → Voz → Reconocimiento sin conexión.»
+
+Esto importa más de lo que parece. Si se pide `useOnDeviceRecognition: true` sin el paquete
+descargado, **Android cae a red sin avisar**. Habríamos medido reconocimiento en la nube
+creyendo que medíamos local, y la conclusión sobre privacidad habría sido falsa.
+
+Estado de las tres configuraciones en el S20+ (Android 13):
+
+| Configuración | Estado | Nota |
+| --- | --- | --- |
+| Google on-device | **No disponible** | Falta descargar el paquete de español |
+| Google en red | Disponible | Seleccionada por defecto |
+| Diálogo del sistema | Disponible | — |
+
+Motores presentes en el dispositivo: `com.google.android.tts` v20260720 (el reconocedor
+local, y el `voice_recognition_service` por defecto) y
+`com.google.android.googlequicksearchbox` v17.48 (el de red).
+
+### 3. El normalizador de números pasa 16/16
+
+La pieza sobre la que descansa toda la medición de voz. Casos cubiertos: palabras puras
+(«cuarenta y cinco mil novecientos noventa» → 45990), mixtas («5 mil» → 5000), con
+separador de millar («45.990» → 45990), con símbolo («$5.000» → 5000) y millones
+(«dos millones trescientos mil quinientos» → 2300500).
+
+## Pendiente para la primera corrida de voz
+
+- [ ] **Descargar el paquete de español offline en el S20+** para poder medir on-device.
+- [ ] Dictar el banco de frases (nivel 1 y 2 = 8 frases × 3 configuraciones × 3 repeticiones).
+- [ ] Comparar `es-CL` contra `es-US`, que es el idioma que el S20+ trae configurado.
+- [ ] Emulador con audio sintético — requiere instalar un dispositivo de loopback en el Mac.
+- [ ] Repetir una corrida corta con `@capacitor-community/speech-recognition` para separar
+      diferencias de plugin de diferencias de motor.
+
+---
+
+# Parte 1 · Imagen → texto
+
+---
+
 ## Corrida 2 — mismas muestras · Galaxy S25 (SM-S931B, Android 15, Snapdragon 8 Elite)
 
 Misma batería, mismas imágenes, mismo build. La pregunta era si hardware más nuevo mejora

@@ -1,0 +1,120 @@
+diff --git a/node_modules/@jcesarmobile/capacitor-ocr/dist/esm/definitions.d.ts b/node_modules/@jcesarmobile/capacitor-ocr/dist/esm/definitions.d.ts
+index 81f1226..765c710 100644
+--- a/node_modules/@jcesarmobile/capacitor-ocr/dist/esm/definitions.d.ts
++++ b/node_modules/@jcesarmobile/capacitor-ocr/dist/esm/definitions.d.ts
+@@ -34,5 +34,24 @@ export interface OcrPlugin {
+      */
+     process(options: {
+         image: string;
++        /**
++         * Idiomas a reconocer, en orden de preferencia. Por omisión `['es-ES']`.
++         *
++         * Vision reconoce en inglés si no se le declara idioma, lo que rompe
++         * tildes y `ñ` en documentos en español.
++         */
++        languages?: string[];
++        /** `accurate` (por omisión) o `fast`. */
++        level?: 'accurate' | 'fast';
++        /** Corrección lingüística de Vision. Por omisión `true`. */
++        usesLanguageCorrection?: boolean;
++        /** Vocabulario propio: nombres de comercios, jerga, unidades. */
++        customWords?: string[];
+     }): Promise<RecognitionResults>;
++    /**
++     * Idiomas que este dispositivo declara soportar para reconocimiento de texto.
++     */
++    getSupportedLanguages(): Promise<{
++        languages: string[];
++    }>;
+ }
+diff --git a/node_modules/@jcesarmobile/capacitor-ocr/ios/Sources/OcrPlugin/OcrPlugin.swift b/node_modules/@jcesarmobile/capacitor-ocr/ios/Sources/OcrPlugin/OcrPlugin.swift
+index 8eb5819..a923fc4 100644
+--- a/node_modules/@jcesarmobile/capacitor-ocr/ios/Sources/OcrPlugin/OcrPlugin.swift
++++ b/node_modules/@jcesarmobile/capacitor-ocr/ios/Sources/OcrPlugin/OcrPlugin.swift
+@@ -11,9 +11,49 @@ public class OcrPlugin: CAPPlugin, CAPBridgedPlugin {
+     public let identifier = "OcrPlugin"
+     public let jsName = "Ocr"
+     public let pluginMethods: [CAPPluginMethod] = [
+-        CAPPluginMethod(name: "process", returnType: CAPPluginReturnPromise)
++        CAPPluginMethod(name: "process", returnType: CAPPluginReturnPromise),
++        CAPPluginMethod(name: "getSupportedLanguages", returnType: CAPPluginReturnPromise)
+     ]
+ 
++    /// Idiomas que Vision debe intentar reconocer.
++    ///
++    /// Sin esto Vision reconoce **en inglés**, que es su valor por omisión. Sobre
++    /// una boleta chilena eso ataca justo lo que importa: tildes, la `ñ`, y la
++    /// corrección lingüística tirando hacia palabras inglesas.
++    private func requestedLanguages(_ call: CAPPluginCall) -> [String] {
++        call.getArray("languages", String.self) ?? ["es-ES"]
++    }
++
++    private func wantsFastLevel(_ call: CAPPluginCall) -> Bool {
++        (call.getString("level") ?? "accurate") == "fast"
++    }
++
++    private func usesCorrection(_ call: CAPPluginCall) -> Bool {
++        call.getBool("usesLanguageCorrection") ?? true
++    }
++
++    /// Vocabulario propio de la app: nombres de comercios, jerga, unidades.
++    /// Es el equivalente en OCR de `contextualStrings` en voz.
++    private func customWords(_ call: CAPPluginCall) -> [String] {
++        call.getArray("customWords", String.self) ?? []
++    }
++
++    /// Idiomas que este dispositivo declara soportar, para poder reportarlos en
++    /// el laboratorio en vez de suponerlos.
++    @objc func getSupportedLanguages(_ call: CAPPluginCall) {
++        if #available(iOS 18.0, *) {
++            let request = RecognizeTextRequest()
++            call.resolve([
++                "languages": request.supportedRecognitionLanguages.map { $0.maximalIdentifier }
++            ])
++            return
++        }
++
++        let request = VNRecognizeTextRequest()
++        let languages = (try? request.supportedRecognitionLanguages()) ?? []
++        call.resolve(["languages": languages])
++    }
++
+     @objc func process(_ call: CAPPluginCall) {
+         guard let imageString = call.getString("image") else {
+             call.reject("missing image")
+@@ -27,10 +67,21 @@ public class OcrPlugin: CAPPlugin, CAPBridgedPlugin {
+             imageURL = URL(string: imageString)
+         }
+ 
++        let languages = requestedLanguages(call)
++        let fastLevel = wantsFastLevel(call)
++        let correction = usesCorrection(call)
++        let words = customWords(call)
++
+         if #available(iOS 18.0, *) {
+             Task {
+                 do {
+-                    let request = RecognizeTextRequest()
++                    var request = RecognizeTextRequest()
++                    request.recognitionLanguages = languages.map { Locale.Language(identifier: $0) }
++                    request.recognitionLevel = fastLevel ? .fast : .accurate
++                    request.usesLanguageCorrection = correction
++                    if !words.isEmpty {
++                        request.customWords = words
++                    }
+                     var textObservations: [RecognizedTextObservation] = []
+                     if let imageData {
+                         textObservations = try await request.perform(on: imageData)
+@@ -87,6 +138,12 @@ public class OcrPlugin: CAPPlugin, CAPBridgedPlugin {
+                     ])
+                 }
+             }
++            textDetectionRequest.recognitionLanguages = languages
++            textDetectionRequest.recognitionLevel = fastLevel ? .fast : .accurate
++            textDetectionRequest.usesLanguageCorrection = correction
++            if !words.isEmpty {
++                textDetectionRequest.customWords = words
++            }
+             do {
+                 if let requestHandler {
+                     try requestHandler.perform([textDetectionRequest])

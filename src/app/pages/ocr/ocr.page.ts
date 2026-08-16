@@ -273,7 +273,7 @@ export class OcrPage implements OnDestroy {
         {
           engines,
           image,
-          options: { script: this.script(), tesseractLang: this.tesseractLang() },
+          options: { script: this.script(), tesseractLang: this.tesseractLang(), language: 'es-ES' },
           groundTruth: this.groundTruth(),
           normalization: this.normalization(),
           runsPerEngine: this.runsPerEngine(),
@@ -333,7 +333,7 @@ export class OcrPage implements OnDestroy {
       const suite = await this.suiteRunner.run(
         samples,
         engines,
-        { script: this.script(), tesseractLang: this.tesseractLang() },
+        { script: this.script(), tesseractLang: this.tesseractLang(), language: 'es-ES' },
         this.normalization(),
         this.runsPerEngine(),
         (p) =>

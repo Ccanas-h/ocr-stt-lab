@@ -1,5 +1,6 @@
 import { inject, Injectable } from '@angular/core';
-import { OcrEngine, SttEngine } from '../models/lab.models';
+import { Capacitor } from '@capacitor/core';
+import { OcrEngine, Platform, SttEngine } from '../models/lab.models';
 import { MlkitBundledEngine } from './ocr/mlkit-bundled.engine';
 import { MlkitUnbundledEngine } from './ocr/mlkit-unbundled.engine';
 import { TesseractEngine } from './ocr/tesseract.engine';
@@ -24,8 +25,14 @@ export class EngineRegistry {
 
   // Las configuraciones nativas no necesitan inyección: son el mismo plugin
   // con parámetros distintos, y cada una compite como motor propio.
+  //
+  // Se filtran por plataforma porque las rutas de Android y de Apple no son
+  // comparables entre sí: son APIs distintas de sistemas distintos. Lo que se
+  // compara es cada una contra las de su propia plataforma.
   readonly stt: readonly SttEngine[] = [
-    ...NATIVE_SPEECH_CONFIGS.map((config) => new NativeSpeechEngine(config)),
+    ...NATIVE_SPEECH_CONFIGS.filter((config) =>
+      config.platforms.includes(Capacitor.getPlatform() as Platform),
+    ).map((config) => new NativeSpeechEngine(config)),
     inject(WebSpeechEngine),
   ];
 

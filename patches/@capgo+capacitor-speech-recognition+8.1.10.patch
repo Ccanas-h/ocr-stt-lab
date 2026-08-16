@@ -111,3 +111,68 @@ index 37e1561..91a0ee4 100644
          }
  
          @Override
+diff --git a/node_modules/@capgo/capacitor-speech-recognition/ios/Sources/SpeechRecognitionPlugin/SpeechRecognitionPlugin.swift b/node_modules/@capgo/capacitor-speech-recognition/ios/Sources/SpeechRecognitionPlugin/SpeechRecognitionPlugin.swift
+index afe6c84..759334a 100644
+--- a/node_modules/@capgo/capacitor-speech-recognition/ios/Sources/SpeechRecognitionPlugin/SpeechRecognitionPlugin.swift
++++ b/node_modules/@capgo/capacitor-speech-recognition/ios/Sources/SpeechRecognitionPlugin/SpeechRecognitionPlugin.swift
+@@ -102,7 +102,8 @@ public final class SpeechRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
+             addPunctuation: call.getBool("addPunctuation") ?? false,
+             contextualStrings: contextualStrings,
+             useOnDeviceRecognition: call.getBool("useOnDeviceRecognition") ?? false,
+-            continuousPTT: call.getBool("continuousPTT") ?? false
++            continuousPTT: call.getBool("continuousPTT") ?? false,
++            forceLegacyRecognizer: call.getBool("forceLegacyRecognizer") ?? false
+         )
+ 
+         if options.continuousPTT && !options.partialResults {
+@@ -279,6 +280,7 @@ public final class SpeechRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
+             let locale = Locale(identifier: options.language)
+             if #available(iOS 26.0, *),
+                options.useOnDeviceRecognition,
++               !options.forceLegacyRecognizer,
+                await SpeechAnalyzerRecognitionSupport.supports(locale: locale) {
+                 beginModernRecognition(call: call, options: options, locale: locale, sessionId: sessionId, restarting: restarting)
+             } else {
+@@ -334,6 +336,12 @@ public final class SpeechRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
+         if #available(iOS 16.0, *) {
+             recognitionRequest.addsPunctuation = options.addPunctuation
+         }
++        // Sin esta línea `SFSpeechRecognizer` manda **siempre** el audio a los
++        // servidores de Apple. Apple la ofrece desde iOS 13; el plugin nunca la
++        // asignaba, así que por debajo de iOS 26 no existía modo sin conexión.
++        if options.useOnDeviceRecognition {
++            recognitionRequest.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
++        }
+         self.recognitionRequest = recognitionRequest
+ 
+         let inputNode = audioEngine.inputNode
+@@ -348,6 +356,10 @@ public final class SpeechRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
+ 
+         do {
+             try audioEngine.start()
++            // Instante real en que el micrófono ya captura, equivalente a
++            // `onReadyForSpeech` en Android. Se emite con el mismo nombre para
++            // que la app mida la ventana de arranque igual en ambas plataformas.
++            notifyListeners("readyForSpeech", data: ["sessionId": sessionId])
+             emitListeningState(state: "started", sessionId: sessionId, reason: restarting ? .results : .userStart, status: "started")
+         } catch {
+             call?.reject("Unable to start audio engine: \(error.localizedDescription)")
+@@ -432,6 +444,7 @@ public final class SpeechRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
+                 return
+             }
+ 
++            self.notifyListeners("readyForSpeech", data: ["sessionId": sessionId])
+             self.emitListeningState(state: "started", sessionId: sessionId, reason: restarting ? .results : .userStart, status: "started")
+         }
+ 
+@@ -855,4 +868,10 @@ private struct RecognitionOptions {
+     let contextualStrings: [String]
+     let useOnDeviceRecognition: Bool
+     let continuousPTT: Bool
++    /// Fuerza el camino `SFSpeechRecognizer` aunque el equipo tenga iOS 26.
++    ///
++    /// Sin esto, `useOnDeviceRecognition` en iOS 26 siempre deriva a
++    /// `SpeechAnalyzer`, y las dos rutas locales de Apple quedan imposibles de
++    /// medir por separado.
++    let forceLegacyRecognizer: Bool
+ }

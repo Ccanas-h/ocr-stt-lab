@@ -15,6 +15,8 @@
     "open:ios": "npx cap open ios",
     "stt:use-community": "npm uninstall @capgo/capacitor-speech-recognition && npm i @capacitor-community/speech-recognition && npx cap sync",
     "stt:use-capgo": "npm uninstall @capacitor-community/speech-recognition && npm i @capgo/capacitor-speech-recognition && npx cap sync",
+    "patch:capgo": "patch-package @capgo/capacitor-speech-recognition --exclude '(^|/)(build|\\.gradle)/'",
+    "patch:ocr": "patch-package @jcesarmobile/capacitor-ocr --exclude '(^|/)(build|\\.gradle)/'",
     "postinstall": "patch-package"
   },
   "prettier": {

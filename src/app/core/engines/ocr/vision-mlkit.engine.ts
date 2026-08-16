@@ -46,8 +46,29 @@ export class VisionMlkitEngine implements OcrEngine {
     return { available: true, native: true };
   }
 
-  async recognize(image: LabImage, _options: OcrOptions): Promise<OcrOutput> {
-    const { results } = await Ocr.process({ image: image.fileUri });
+  /**
+   * Idiomas que se le declaran a Vision.
+   *
+   * No es opcional: sin `recognitionLanguages`, Vision reconoce **en inglés**,
+   * que es su valor por omisión. Sobre un documento en español eso ataca las
+   * tildes, la `ñ` y empuja la corrección lingüística hacia palabras inglesas.
+   * El plugin no exponía la opción; la agrega nuestro parche.
+   *
+   * En Android el parámetro se ignora: ML Kit resuelve el alfabeto latino
+   * completo con un solo modelo.
+   */
+  private languagesFor(options: OcrOptions): string[] {
+    const language = options.language ?? 'es';
+    return language.startsWith('es') ? ['es-ES', 'en-US'] : [language];
+  }
+
+  async recognize(image: LabImage, options: OcrOptions): Promise<OcrOutput> {
+    const { results } = await Ocr.process({
+      image: image.fileUri,
+      languages: this.languagesFor(options),
+      level: 'accurate',
+      usesLanguageCorrection: true,
+    });
 
     const blocks: OcrBlock[] = (results ?? []).map((r) => ({
       text: r.text,

@@ -42,7 +42,49 @@ export interface NativeSpeechConfig {
   onDevice: boolean;
   /** Usa el diálogo del sistema en vez del reconocimiento en línea. */
   popup: boolean;
+  /** Plataformas donde esta configuración es un motor real y medible. */
+  platforms: readonly Platform[];
+  /**
+   * iOS: fija `SFSpeechRecognizer` aunque el equipo tenga iOS 26.
+   *
+   * Sin esto `useOnDeviceRecognition` deriva siempre a `SpeechAnalyzer` y las
+   * dos rutas locales de Apple no se pueden medir por separado. Lo expone
+   * nuestro parche al plugin.
+   */
+  forceLegacy?: boolean;
+  /**
+   * Vocabulario con el que sesgar el reconocimiento.
+   *
+   * Apple lo ofrece por API; Android no tiene equivalente. Es la vía para
+   * comprobar si iOS resuelve por configuración lo que en Android hubo que
+   * resolver con una tabla de jerga.
+   */
+  contextualStrings?: readonly string[];
 }
+
+/**
+ * Términos que un reconocedor entrenado con español genérico no espera.
+ *
+ * `lucas` está acá por medición: en el S25 «cinco lucas» se transcribió como
+ * «5 Lucas», con mayúscula, y el monto extraído fue 5 en vez de 5000.
+ */
+export const CHILEAN_CONTEXT_TERMS: readonly string[] = [
+  'lucas',
+  'luca',
+  'gamba',
+  'palo',
+  'Falabella',
+  'Jumbo',
+  'Líder',
+  'Unimarc',
+  'Santa Isabel',
+  'Copec',
+  'Cruz Verde',
+  'Salcobrand',
+  'Sodimac',
+  'Ripley',
+  'Paris',
+];
 
 export class NativeSpeechEngine implements SttEngine {
   readonly id: string;
@@ -188,7 +230,13 @@ export class NativeSpeechEngine implements SttEngine {
       partialResults: options.partialResults && !this.config.popup,
       popup: this.config.popup,
       useOnDeviceRecognition: this.config.onDevice,
-    });
+      ...(this.config.contextualStrings
+        ? { contextualStrings: [...this.config.contextualStrings] }
+        : {}),
+      // `forceLegacyRecognizer` sólo existe gracias al parche; en Android el
+      // plugin lo ignora.
+      ...(this.config.forceLegacy ? { forceLegacyRecognizer: true } : {}),
+    } as Parameters<typeof SpeechRecognition.start>[0]);
 
     if (result?.matches?.length) {
       onEvent({ kind: 'final', text: result.matches[0], matches: result.matches, atMs: at() });
@@ -219,40 +267,94 @@ export class NativeSpeechEngine implements SttEngine {
 }
 
 /**
- * Las tres configuraciones que sí son motores distintos en Android.
+ * Las configuraciones que sí son motores distintos, por plataforma.
  *
  * Ordenadas por preferencia para el caso de uso: el audio de alguien diciendo
  * en qué gastó no debería salir del teléfono si el modo local alcanza.
  */
 export const NATIVE_SPEECH_CONFIGS: readonly NativeSpeechConfig[] = [
+  // ── Android ────────────────────────────────────────────────────────────────
   {
     id: 'speech-ondevice',
     label: 'Google on-device (local)',
+    platforms: ['android'],
     onDevice: true,
     popup: false,
     androidBackend: 'SpeechRecognizer.createOnDeviceSpeechRecognizer (API 31+)',
-    iosBackend: 'SFSpeechRecognizer / SpeechAnalyzer con requiresOnDeviceRecognition',
+    iosBackend: 'no aplica',
     notes:
       'El audio nunca sale del teléfono. Exige que el paquete de idioma esté descargado; si no lo está, el sistema cae a red sin avisar.',
   },
   {
     id: 'speech-network',
     label: 'Google en red',
+    platforms: ['android'],
     onDevice: false,
     popup: false,
     androidBackend: 'SpeechRecognizer con el servicio por defecto (app de Google)',
-    iosBackend: 'SFSpeechRecognizer con reconocimiento en servidor',
+    iosBackend: 'no aplica',
     notes:
       'Normalmente el más preciso, sobre todo con nombres propios. El audio se envía a servidores de Google: hay que declararlo en la política de privacidad.',
   },
   {
     id: 'speech-dialog',
     label: 'Diálogo del sistema',
+    platforms: ['android'],
     onDevice: false,
     popup: true,
     androidBackend: 'RecognizerIntent.ACTION_RECOGNIZE_SPEECH',
     iosBackend: 'no aplica (opción sólo de Android)',
     notes:
       'Abre la interfaz de Google. No entrega resultados parciales ni permite personalizar la pantalla, pero es la ruta con menos código y la que el usuario ya reconoce.',
+  },
+
+  // ── iOS ────────────────────────────────────────────────────────────────────
+  {
+    id: 'ios-analyzer',
+    label: 'Apple SpeechAnalyzer (iOS 26)',
+    platforms: ['ios'],
+    onDevice: true,
+    popup: false,
+    forceLegacy: false,
+    androidBackend: 'no aplica',
+    iosBackend: 'SpeechAnalyzer + SpeechTranscriber (iOS 26+)',
+    notes:
+      'La API nueva de Apple: local, en flujo continuo y pensada para baja latencia. Está por verificar si funciona en equipos sin Apple Intelligence, como el iPhone 12.',
+  },
+  {
+    id: 'ios-legacy-ondevice',
+    label: 'Apple SFSpeechRecognizer (local)',
+    platforms: ['ios'],
+    onDevice: true,
+    popup: false,
+    forceLegacy: true,
+    androidBackend: 'no aplica',
+    iosBackend: 'SFSpeechRecognizer con requiresOnDeviceRecognition (iOS 13+)',
+    notes:
+      'La ruta local disponible desde iOS 13, y la única si SpeechAnalyzer no corre en el equipo. El plugin nunca asignaba esa propiedad: se agregó por parche.',
+  },
+  {
+    id: 'ios-network',
+    label: 'Apple en red',
+    platforms: ['ios'],
+    onDevice: false,
+    popup: false,
+    androidBackend: 'no aplica',
+    iosBackend: 'SFSpeechRecognizer con reconocimiento en servidor',
+    notes:
+      'El comportamiento por omisión del plugin. Sirve de referencia alta de precisión y para medir cuánto se pierde al quedarse local.',
+  },
+  {
+    id: 'ios-contextual',
+    label: 'Apple local + vocabulario chileno',
+    platforms: ['ios'],
+    onDevice: true,
+    popup: false,
+    forceLegacy: true,
+    contextualStrings: CHILEAN_CONTEXT_TERMS,
+    androidBackend: 'no aplica (Android no expone equivalente)',
+    iosBackend: 'SFSpeechRecognizer local + contextualStrings',
+    notes:
+      'Mide si sesgar el reconocedor por API resuelve lo que en Android hubo que resolver con una tabla de jerga. El caso decisivo es «cinco lucas».',
   },
 ];

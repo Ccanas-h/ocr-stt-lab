@@ -81,6 +81,14 @@ export interface OcrOptions {
   script: OcrScript;
   /** Código de idioma para Tesseract (p. ej. `spa`, `eng`, `spa+eng`). */
   tesseractLang: string;
+  /**
+   * Idioma BCP-47 del documento, para los motores que sí lo respetan.
+   *
+   * Apple Vision reconoce en inglés si no se le declara: sobre un documento en
+   * español eso rompe tildes y `ñ`. ML Kit lo ignora, porque resuelve el
+   * alfabeto latino completo con un solo modelo.
+   */
+  language?: string;
 }
 
 /** Bloque/línea reconocida, aplanado a un formato común entre plugins. */

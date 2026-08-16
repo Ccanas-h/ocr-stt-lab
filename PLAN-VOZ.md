@@ -43,18 +43,42 @@ mismos bytes». Se resuelve con dos caminos complementarios:
 
 | Camino | Dónde | Qué mide | Reproducible |
 | --- | --- | --- | --- |
-| **Dictado guiado** | S20+ real | Rendimiento real: micrófono del teléfono, acento chileno, ruido de la pieza | No — hay que repetir varias veces y promediar |
-| **Audio sintético** | Emulador | Diferencias entre motores con entrada idéntica, sin la variable humana | Sí |
+| **Dictado guiado** | Teléfono real | Rendimiento real: micrófono del teléfono, acento chileno, ruido de la pieza | No — hay que repetir y promediar |
+| **Reproducción acústica** | Teléfono real | Diferencias entre motores con la misma entrada, sin la variable humana | Sí, dentro de una misma sesión |
 
-Para el segundo, macOS genera el audio con `say` y voces en español (Mónica es_ES,
-Paulina es_MX). No hay voz chilena, pero para comparar motores entre sí da lo mismo:
-lo que importa es que la entrada sea **la misma** para todos.
+### Reproducción acústica: cómo funciona y qué vale
 
-> **Requisito pendiente para el camino reproducible:** el emulador toma el micrófono
-> por defecto del Mac. Para meterle el audio limpio hace falta un dispositivo de loopback
-> (`brew install blackhole-2ch`), que hoy **no está instalado**. Sin él, el plan B es
-> reproducir por parlantes y dejar que el micrófono del Mac lo capte — funciona, pero
-> agrega acústica de la sala. Decisión del usuario si vale instalarlo.
+**Verificado y funcionando.** macOS genera el audio con `say` y una voz en español, y se
+reproduce por los parlantes del Mac mientras el teléfono —que está al lado, conectado por
+USB— escucha por su micrófono. El ciclo completo se dispara desde un solo comando para que
+el toque y el audio queden sincronizados:
+
+```bash
+adb -s <serial> shell input tap <x> <y>   # inicia la escucha
+sleep 1.2                                  # el reconocedor necesita despertar
+afplay frase.aiff                          # el teléfono lo capta por el micrófono
+```
+
+El `sleep` no es adorno: separar el toque del audio en dos llamadas distintas hace que el
+reconocedor se cierre por silencio antes de que suene nada. Fue el motivo de los primeros
+intentos fallidos.
+
+**Lo que este método sí permite:** comparar configuraciones entre sí con exactamente la
+misma entrada, y hacerlo sin que nadie tenga que hablar. Es lo que convierte la batería en
+algo repetible.
+
+**Lo que este método NO permite, y hay que tener presente al leer los números:**
+
+- La voz es sintética y de acento mexicano, no chilena. Sirve para comparar motores, **no**
+  para afirmar cuánto acertará con usuarios reales.
+- El audio pasa por parlante y micrófono, así que arrastra la acústica de la sala.
+- **Las primeras palabras se pierden**: el reconocedor tarda en despertar y el audio ya va
+  sonando. En las pruebas «Gasté» salió como «Castel» y «Pagué» como «calle». Es artefacto
+  del método, no del motor.
+- Por lo mismo, **los tiempos de latencia que reporta no son válidos**: incluyen el `sleep`
+  y la duración del audio.
+
+Para números de precisión con usuarios reales sigue haciendo falta el dictado humano.
 
 ### 3. Los números son el problema, igual que en OCR
 

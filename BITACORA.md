@@ -107,6 +107,46 @@ La pieza sobre la que descansa toda la medición de voz. Casos cubiertos: palabr
 separador de millar («45.990» → 45990), con símbolo («$5.000» → 5000) y millones
 («dos millones trescientos mil quinientos» → 2300500).
 
+## Corrida 3 — primeras transcripciones reales · Galaxy S25 (Android 15)
+
+Configuración: **Google on-device**, idioma **es-US**, modelo local ya instalado.
+Método: reproducción acústica (audio sintético por parlantes del Mac, captado por el
+micrófono del teléfono). Ver [PLAN-VOZ.md](PLAN-VOZ.md) para sus límites.
+
+| Frase esperada | Transcripción del motor | Monto | Similitud |
+| --- | --- | --- | --- |
+| Gasté cinco mil pesos en el supermercado | `gasté 5000 pesos en el supermercado` | **5000 ✓** | 100 % |
+| Gasté cuarenta y cinco mil novecientos noventa pesos en Falabella | `Castel 45 990 pesos en falabella` | **45990 ✓** | 90.0 % |
+| Pagué doce mil quinientos en la farmacia | `calle 12 500 en la farmacia` | **12500 ✓** | 84.6 % |
+
+**3 de 3 montos correctos. 3 de 3 comercios correctos.**
+
+### Lo que muestran estas tres tomas
+
+**1. Google ya devuelve los números en dígitos.** No dijo «cinco mil»: dijo `5000`. La
+preocupación de que hubiera que convertir texto a número está resuelta en origen la mayor
+parte del tiempo.
+
+**2. Pero el formato es inconsistente, y ahí el normalizador se gana el sueldo.** Devolvió
+`45 990` y `12 500` — con espacio como separador de miles. Comparando texto crudo, `45 990`
+no coincide con `45990` y habríamos contado un error donde no lo hay. El normalizador los
+colapsa y los tres montos salen exactos.
+
+> Conclusión para la app: **no confiar en que el número llegue limpio.** La capa de
+> normalización no es opcional, es la que convierte «casi correcto» en «correcto».
+
+**3. Los nombres propios sobrevivieron.** `Falabella` y `farmacia` se reconocieron bien, que
+era la duda principal con nombres de comercios chilenos.
+
+**4. La primera palabra se perdió en dos de tres.** «Gasté» → «Castel», «Pagué» → «calle».
+Es artefacto del método —el audio empieza antes de que el reconocedor despierte— pero
+apunta a algo real de producto: **existe una ventana de arranque**. En la app conviene
+mostrar el indicador de «escuchando» sólo cuando el motor ya está listo, o el usuario
+empezará a hablar demasiado pronto y perderá su primera palabra.
+
+**5. Los tiempos de esta corrida no sirven.** Los 2811–3446 ms al primer parcial incluyen el
+retardo deliberado y la duración del audio. La latencia real se mide con dictado humano.
+
 ## Pendiente para la primera corrida de voz
 
 - [x] ~~Habilitar reconocimiento local en el S20+~~ → resuelto: usar `es-US`, ya instalado.

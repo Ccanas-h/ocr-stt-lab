@@ -58,6 +58,8 @@ interface Take {
   heard: string;
   firstPartialMs?: number;
   totalMs?: number;
+  /** ms hasta que el micrófono capturó de verdad. */
+  readyMs?: number;
   expectedAmount: number;
   score: SttScore;
 }
@@ -119,6 +121,18 @@ export class SttPage implements OnDestroy {
   readonly firstPartialMs = signal<number | undefined>(undefined);
   readonly totalMs = signal<number | undefined>(undefined);
 
+  /**
+   * ms desde que se toca el botón hasta que el micrófono captura de verdad.
+   *
+   * Es la ventana en la que el usuario puede hablar y no ser escuchado. Se
+   * mide aparte de todo lo demás porque determina un requisito de interfaz:
+   * cuándo mostrar «habla ahora».
+   */
+  readonly readyMs = signal<number | undefined>(undefined);
+  readonly micReady = signal(false);
+  /** Historial de arranques de la sesión, para separar el frío del caliente. */
+  readonly warmups = signal<number[]>([]);
+
   readonly languagePack = signal<LanguagePackStatus | undefined>(undefined);
   readonly preparing = signal(false);
 
@@ -166,6 +180,9 @@ export class SttPage implements OnDestroy {
         similarity: list.reduce((sum, t) => sum + t.score.similarity, 0) / list.length,
         medianFirstPartial: medianOf(
           list.map((t) => t.firstPartialMs).filter((v): v is number => v !== undefined),
+        ),
+        medianReady: medianOf(
+          list.map((t) => t.readyMs).filter((v): v is number => v !== undefined),
         ),
       }))
       .sort((a, b) => b.amountAccuracy - a.amountAccuracy);
@@ -314,6 +331,7 @@ export class SttPage implements OnDestroy {
       await this.notify(this.describe(error), 'danger');
     } finally {
       this.listening.set(false);
+      this.micReady.set(false);
     }
   }
 
@@ -321,6 +339,11 @@ export class SttPage implements OnDestroy {
     this.log.update((entries) => [...entries, event]);
 
     switch (event.kind) {
+      case 'ready':
+        this.readyMs.set(event.atMs);
+        this.micReady.set(true);
+        this.warmups.update((list) => [...list, event.atMs]);
+        break;
       case 'partial':
         if (this.firstPartialMs() === undefined) this.firstPartialMs.set(event.atMs);
         this.liveText.set(event.text ?? '');
@@ -360,6 +383,7 @@ export class SttPage implements OnDestroy {
         heard,
         firstPartialMs: this.firstPartialMs(),
         totalMs: this.totalMs(),
+        readyMs: this.readyMs(),
         expectedAmount: phrase.amount,
         score: scoreDictation(phrase, heard, DEFAULT_NORMALIZATION),
       },
@@ -379,6 +403,23 @@ export class SttPage implements OnDestroy {
     this.log.set([]);
     this.firstPartialMs.set(undefined);
     this.totalMs.set(undefined);
+    this.readyMs.set(undefined);
+    this.micReady.set(false);
+  }
+
+  /** Primer arranque de la sesión: incluye crear el reconocedor. */
+  coldWarmup(): number | undefined {
+    return this.warmups()[0];
+  }
+
+  /** Mediana de los arranques posteriores, con el reconocedor ya vivo. */
+  warmWarmup(): number | undefined {
+    const rest = this.warmups().slice(1);
+    return rest.length > 0 ? medianOf(rest) : undefined;
+  }
+
+  clearWarmups(): void {
+    this.warmups.set([]);
   }
 
   // -- Exportación ------------------------------------------------------------
@@ -406,12 +447,15 @@ export class SttPage implements OnDestroy {
     lines.push('');
     lines.push(`${this.takes().length} tomas · idioma ${this.language()}`);
     lines.push('');
-    lines.push('| Motor | Tomas | Monto correcto | Términos clave | Similitud | 1.er parcial |');
-    lines.push('| --- | --- | --- | --- | --- | --- |');
+    lines.push(
+      '| Motor | Tomas | Monto correcto | Términos clave | Similitud | Micrófono listo | 1.er parcial |',
+    );
+    lines.push('| --- | --- | --- | --- | --- | --- | --- |');
     for (const row of this.summary()) {
       lines.push(
         `| ${row.engineLabel} | ${row.takes} | ${percent(row.amountAccuracy)} | ` +
-          `${percent(row.termAccuracy)} | ${percent(row.similarity)} | ${row.medianFirstPartial} ms |`,
+          `${percent(row.termAccuracy)} | ${percent(row.similarity)} | ` +
+          `${row.medianReady} ms | ${row.medianFirstPartial} ms |`,
       );
     }
     lines.push('');

@@ -17,6 +17,10 @@ import {
  */
 type PatchedSpeechRecognition = typeof SpeechRecognition & {
   downloadOnDeviceModel(options: { language: string }): Promise<LanguagePackStatus>;
+  addListener(
+    eventName: 'readyForSpeech',
+    listenerFunc: () => void,
+  ): Promise<PluginListenerHandle>;
 };
 
 /**
@@ -150,6 +154,15 @@ export class NativeSpeechEngine implements SttEngine {
         if (text.length > 0) {
           onEvent({ kind: 'partial', text, matches: event.matches, atMs: at() });
         }
+      }),
+    );
+
+    // El plugin emite 'started' apenas llama a startListening(), que es antes
+    // de que el micrófono capture. `readyForSpeech` —expuesto por el parche—
+    // es el momento real en que se puede hablar.
+    this.listeners.push(
+      await (SpeechRecognition as PatchedSpeechRecognition).addListener('readyForSpeech', () => {
+        onEvent({ kind: 'ready', atMs: at() });
       }),
     );
 

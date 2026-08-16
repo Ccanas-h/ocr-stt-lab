@@ -147,13 +147,41 @@ empezará a hablar demasiado pronto y perderá su primera palabra.
 **5. Los tiempos de esta corrida no sirven.** Los 2811–3446 ms al primer parcial incluyen el
 retardo deliberado y la duración del audio. La latencia real se mide con dictado humano.
 
+### 6. Cuarto bug: el plugin se traga `onReadyForSpeech`
+
+La causa concreta de que se pierdan las primeras palabras.
+
+Android distingue dos momentos: `startListening()` **pide** arrancar, y `onReadyForSpeech()`
+confirma que el micrófono **ya captura**. El plugin emite su evento `started` justo después
+del primero, así que desde JavaScript era imposible saber cuándo se puede hablar — y el
+callback que sí lo dice quedaba descartado sin notificar a nadie.
+
+El parche lo expone como evento `readyForSpeech`. Con eso la app hace dos cosas:
+
+1. **Mide la ventana de arranque**, separando el primer arranque (frío, incluye crear el
+   reconocedor) de los siguientes (con el reconocedor ya vivo).
+2. **Muestra «habla ahora» sólo cuando corresponde**, en vez de decir «escuchando» mientras
+   todavía no escucha.
+
+Instrumentación desplegada y compilando. **La medición en el S25 quedó pendiente: el
+teléfono se bloqueó y no voy a intentar pasar la pantalla de bloqueo.** El emulador no
+sirve como sustituto: no tiene un motor de voz funcional.
+
+> Si el arranque en frío resulta mucho más lento que los siguientes, la solución no es
+> hacer esperar al usuario sino **precalentar** el reconocedor al abrir la pantalla de
+> registrar gasto. La capa de «espera un momento» sólo hace falta si ni así baja.
+
 ## Pendiente para la primera corrida de voz
 
 - [x] ~~Habilitar reconocimiento local en el S20+~~ → resuelto: usar `es-US`, ya instalado.
 - [ ] Dictar el banco de frases (nivel 1 y 2 = 8 frases × 3 configuraciones × 3 repeticiones).
       **Requiere que una persona hable**: no hay forma de inyectar audio a `SpeechRecognizer`.
 - [ ] Comparar `es-US` contra `es-ES` en reconocimiento de montos y nombres chilenos.
-- [ ] Emulador con audio sintético — requiere instalar un dispositivo de loopback en el Mac.
+- [ ] **Medir la ventana de arranque** en el S25 (frío vs. caliente) — instrumentación
+      lista, falta el teléfono desbloqueado.
+- [ ] Integrar `capacitor-offline-speech-recognition` (Vosk) como cuarta configuración:
+      es el único candidato del mercado que corre **dentro del proceso** y por tanto no
+      paga la ventana de enlace con el servicio del sistema. Ver [PLAN-VOZ.md](PLAN-VOZ.md).
 - [ ] Repetir una corrida corta con `@capacitor-community/speech-recognition` para separar
       diferencias de plugin de diferencias de motor.
 

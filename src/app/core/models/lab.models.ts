@@ -127,7 +127,13 @@ export interface SttOptions {
 }
 
 export interface SttEvent {
-  kind: 'partial' | 'final' | 'state' | 'error';
+  /**
+   * `ready` es el instante en que Android confirma que el micrófono ya está
+   * capturando. Es distinto de `state: 'started'`, que sólo dice que se pidió
+   * arrancar: entre ambos hay una ventana en la que el usuario puede hablar y
+   * no ser escuchado.
+   */
+  kind: 'partial' | 'final' | 'state' | 'error' | 'ready';
   text?: string;
   matches?: string[];
   state?: 'started' | 'stopped';

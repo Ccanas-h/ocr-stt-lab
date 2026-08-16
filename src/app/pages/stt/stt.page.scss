@@ -124,3 +124,15 @@ code {
   border-radius: 4px;
   background: var(--ion-color-light);
 }
+
+/* «Habla ahora» tiene que saltar a la vista: es la señal que evita que el
+   usuario empiece antes de tiempo y pierda su primera palabra. */
+.lab-speak-now {
+  font-weight: 600;
+}
+
+a {
+  color: var(--ion-color-primary);
+  cursor: pointer;
+  text-decoration: underline;
+}

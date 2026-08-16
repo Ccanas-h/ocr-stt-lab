@@ -183,10 +183,40 @@
       </ion-button>
 
       @if (listening()) {
-        <ion-chip color="danger" class="ion-margin-top">
-          <ion-icon name="radio-button-on" />
-          <ion-label>Escuchando…</ion-label>
-        </ion-chip>
+        @if (micReady()) {
+          <ion-chip color="success" class="ion-margin-top lab-speak-now">
+            <ion-icon name="radio-button-on" />
+            <ion-label>Habla ahora</ion-label>
+          </ion-chip>
+        } @else {
+          <ion-chip color="medium" class="ion-margin-top">
+            <ion-icon name="hourglass-outline" />
+            <ion-label>Preparando micrófono… espera</ion-label>
+          </ion-chip>
+        }
+      }
+
+      @if (warmups().length > 0) {
+        <div class="lab-metric-row">
+          <span class="lab-metric">
+            <strong>{{ coldWarmup() ?? '—' }}</strong><small>ms 1.er arranque (frío)</small>
+          </span>
+          @if (warmWarmup() !== undefined) {
+            <span class="lab-metric">
+              <strong>{{ warmWarmup() }}</strong><small>ms arranques siguientes</small>
+            </span>
+          }
+          <span class="lab-metric">
+            <strong>{{ warmups().length }}</strong><small>arranques medidos</small>
+          </span>
+        </div>
+        <p class="lab-hint">
+          Es el tiempo entre tocar el botón y que el micrófono capture de verdad. Android lo
+          avisa en <code>onReadyForSpeech</code>; hasta ese instante el usuario puede hablar
+          y no ser escuchado. Si el primer arranque es mucho más lento que los siguientes,
+          conviene precalentar el reconocedor al abrir la pantalla.
+          <a (click)="clearWarmups()">Reiniciar medición</a>
+        </p>
       }
 
       <p class="lab-hint ion-margin-top">Transcripción tal cual la entrega el motor:</p>
@@ -211,6 +241,9 @@
           </span>
           <span class="lab-metric"><strong>{{ pct(s.similarity) }}</strong><small>similitud</small></span>
           <span class="lab-metric"><strong>{{ pct(s.wer) }}</strong><small>error palabras</small></span>
+          <span class="lab-metric">
+            <strong>{{ readyMs() ?? '—' }}</strong><small>ms hasta poder hablar</small>
+          </span>
           <span class="lab-metric">
             <strong>{{ firstPartialMs() ?? '—' }}</strong><small>ms al 1.er parcial</small>
           </span>
@@ -255,6 +288,7 @@
                 <th>Monto</th>
                 <th>Términos</th>
                 <th>Similitud</th>
+                <th>Mic listo</th>
                 <th>1.er parcial</th>
               </tr>
             </thead>
@@ -266,6 +300,7 @@
                   <td><strong>{{ pct(row.amountAccuracy) }}</strong></td>
                   <td><strong>{{ pct(row.termAccuracy) }}</strong></td>
                   <td><strong>{{ pct(row.similarity) }}</strong></td>
+                  <td><strong>{{ row.medianReady }}</strong><small>ms</small></td>
                   <td><strong>{{ row.medianFirstPartial }}</strong><small>ms</small></td>
                 </tr>
               }

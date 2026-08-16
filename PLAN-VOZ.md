@@ -180,17 +180,83 @@ segmentación por silencio.
 
 ---
 
-## Lo que sí sería un motor distinto (fase posterior)
+## La ventana de arranque: por qué existe y cómo se mide
 
-Si Google on-device no alcanza, las alternativas reales exigen plugin nativo propio:
+Android tiene dos momentos distintos que es fácil confundir:
 
-| Motor | Ventaja | Costo |
-| --- | --- | --- |
-| **Vosk** | Offline de verdad, modelos pequeños (~50 MB), español disponible | No hay plugin Capacitor mantenido; hay que escribirlo |
-| **whisper.cpp** | Precisión muy alta, especialmente con números | Modelo de 75–500 MB, lento en gama media, plugin propio |
+| Momento | Qué significa |
+| --- | --- |
+| `startListening()` retorna | Se **pidió** arrancar. El micrófono todavía no captura. |
+| `onReadyForSpeech()` | Android confirma que **ya está capturando**. Recién aquí se puede hablar. |
 
-Ambos quedan fuera de esta ronda: primero hay que saber si lo que ya trae el sistema
-alcanza. Si alcanza, no se justifica cargar la app con un modelo propio.
+Entre ambos hay una ventana en la que el usuario puede hablar y no ser escuchado. Es
+exactamente lo que se vio en las primeras tomas: «Gasté» salió «Castel» y «Pagué» salió
+«calle» — la primera palabra cayó dentro de esa ventana.
+
+**El plugin se traga `onReadyForSpeech`**: emite su evento `started` justo después de
+`startListening()`, o sea antes de que el micrófono capture. Desde JavaScript no había
+forma de saber cuándo se puede hablar. El parche expone un evento `readyForSpeech`, y con
+eso la app mide la ventana y muestra «habla ahora» sólo cuando corresponde.
+
+Se mide separando dos casos, porque suelen ser muy distintos:
+
+- **Arranque en frío** — el primero después de abrir la app. Incluye crear el reconocedor
+  y, en el caso de red, levantar la conexión con el servicio.
+- **Arranques siguientes** — con el reconocedor ya vivo.
+
+Si la diferencia es grande, la solución no es hacer esperar al usuario: es **precalentar**
+el reconocedor al abrir la pantalla de registrar gasto, para que al tocar el micrófono ya
+esté listo. La capa de «espera un momento» sólo hace falta si ni siquiera precalentando
+baja lo suficiente.
+
+---
+
+## Alternativas más instantáneas: qué ofrece el mercado hoy
+
+La razón de fondo de la ventana de arranque es que `SpeechRecognizer` **no corre dentro de
+la app**: es un servicio del sistema (`com.google.android.tts`) al que hay que conectarse
+por IPC. Ese enlace es el que cuesta. Un motor que corra **dentro del proceso** no tiene
+ese costo.
+
+| Motor | Dónde corre | Arranque | Precisión esperada | Costo real |
+| --- | --- | --- | --- | --- |
+| **Google on-device** | Servicio del sistema | Ventana de enlace IPC | Alta | Gratis. Es lo que ya medimos. |
+| **Google en red** | Servicio + servidores | Enlace IPC + red | La más alta, sobre todo nombres propios | Gratis, pero el audio sale del teléfono |
+| **Vosk** | **Dentro de la app** | Prácticamente inmediato: streaming continuo | Menor que Google | ~50 MB por idioma en el APK o descargados |
+| **whisper.cpp** | Dentro de la app | Inmediato al grabar, pero transcribe **después** | Muy alta, especialmente con números | Modelo 75–500 MB; lento en gama media |
+| **ML Kit GenAI Speech** | AICore / Gemini Nano | Por medir | Por medir | **Alpha en 2026**; sólo dispositivos con Gemini Nano |
+| **Picovoice Cheetah** | Dentro de la app | Inmediato, streaming | Alta | **Licencia comercial** |
+
+### El candidato concreto: `capacitor-offline-speech-recognition`
+
+Existe y es alcanzable desde Capacitor hoy:
+
+- **Paquete**: `capacitor-offline-speech-recognition@3.0.0`, peer `@capacitor/core >= 7`
+- **Motor**: Vosk en **ambas** plataformas — Vosk Android SDK 0.3.70 e `libvosk.xcframework` en iOS
+- **Idiomas**: 15+, con modelos descargados bajo demanda desde alphacephei.com
+- **Peso**: ~50 MB por idioma, guardados en el directorio de documentos de la app
+- **Nota**: en iOS reemplaza el framework Speech de Apple por Vosk
+
+Es interesante por tres razones para este caso de uso: corre **dentro del proceso** (sin
+ventana de enlace), es **el mismo motor en Android y iOS** (una sola calidad que validar en
+vez de dos), y no depende de servicios de Google.
+
+Contras honestos: es un paquete de autor único con poca tracción, Vosk rinde por debajo de
+Google en benchmarks estándar, y hay que descargar y gestionar los modelos.
+
+**Recomendación**: agregarlo como cuarta fila de la tabla comparativa. Es el único candidato
+del mercado que ataca directamente el problema del arranque instantáneo sin microservicio.
+Queda pendiente de integrar.
+
+### Descartados para esta ronda
+
+- **whisper.cpp** — no transcribe en vivo: graba y luego procesa. Para frases de 5 segundos
+  el usuario esperaría a que termine. Sirve si más adelante se quiere máxima precisión en
+  montos y se acepta esa espera.
+- **Picovoice** — técnicamente sólido, pero licencia comercial. Fuera mientras haya
+  opciones gratuitas que cumplan.
+- **ML Kit GenAI Speech** — en alpha y limitado a dispositivos con Gemini Nano. Vale
+  seguirlo de cerca, no construir sobre él todavía.
 
 ---
 

@@ -30,7 +30,7 @@ export class MlkitBundledEngine implements OcrEngine {
     web: 'no soportado',
   };
   readonly notes =
-    'Modelos dentro del binario: no requiere Play Services ni descarga. Soporta latino, chino, devanagari, japonés y coreano. Aumenta el peso del APK/IPA.';
+    'Modelos dentro del binario: no requiere Play Services ni descarga. Único que soporta chino, devanagari, japonés y coreano. Aumenta el peso del APK/IPA. No expone la confianza que ML Kit sí calcula.';
 
   async isSupported(): Promise<EngineSupport> {
     const platform = Capacitor.getPlatform();

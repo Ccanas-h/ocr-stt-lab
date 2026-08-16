@@ -32,7 +32,7 @@ export class VisionMlkitEngine implements OcrEngine {
     web: 'no soportado',
   };
   readonly notes =
-    'En iOS usa el framework Vision del sistema: cero peso adicional y mejor manejo de texto inclinado. En Android cae a ML Kit. Entrega confianza por fragmento.';
+    'Único de la batería que entrega confianza en ambas plataformas: Text.Line.getConfidence() en Android y VNRecognizedText.confidence en iOS. En iOS usa el framework Vision del sistema, sin peso adicional.';
 
   async isSupported(): Promise<EngineSupport> {
     const platform = Capacitor.getPlatform();

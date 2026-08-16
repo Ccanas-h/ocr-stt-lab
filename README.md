@@ -8,19 +8,31 @@ No es un demo. Es un instrumento de medición: cada motor se ejecuta sobre **los
 píxeles**, se cronometra igual y se puntúa contra un texto de referencia, para poder
 comparar peras con peras.
 
-## Resultado hasta ahora
+## Resultados
 
-Galaxy S20+ (Android 13), 4 boletas y documentos fotografiados con celular, campos clave
-recuperados — ver [BITACORA.md](BITACORA.md) para el detalle:
+Cuatro boletas y documentos fotografiados con celular, medidos en dos dispositivos reales.
+Detalle completo en [BITACORA.md](BITACORA.md).
 
-| Motor | Campos clave | Tiempo mediano |
-| --- | --- | --- |
-| ML Kit v2 (cualquiera de los 3 plugins) | **83.1 %** | 140–444 ms |
-| Tesseract 5 (WASM) | 36.6 % | 887–3785 ms |
+| Motor | Campos clave | Tiempo (S20+) | Tiempo (S25) |
+| --- | --- | --- | --- |
+| ML Kit v2 — los 3 plugins | **83.1 %** | 140–444 ms | 57–223 ms |
+| Tesseract 5 (WASM) | 36.6 % | 887–3785 ms | 377–1570 ms |
 
-El hallazgo que más cuesta caro descubrir tarde: **con una imagen sintética limpia,
-Tesseract ganaba con 98.4 %**. Con fotos reales de boletas se desploma a 36.6 % y en un
-caso no recupera ni un campo. Medir con el caso feliz lleva a la decisión equivocada.
+Tres cosas que costaría caro descubrir tarde:
+
+**1. Medir con el caso feliz lleva a la decisión equivocada.** Con una imagen sintética
+limpia Tesseract ganaba con 98.4 %. Con fotos reales cae a 36.6 % y en un caso no recupera
+ni un campo. Fue entrenado para documentos escaneados, no para fotos de celular.
+
+**2. Hardware más nuevo no mejora la precisión — ni un punto.** Las 16 celdas de precisión
+son idénticas entre un Galaxy S20+ (2020) y un S25 (2025). Mismo modelo, misma salida; la
+NPU sólo acelera (~2.3×). El techo de ~83 % no se sube comprando teléfonos mejores: hay
+que mejorar la imagen que entra, no el motor.
+
+**3. Sólo un plugin expone la confianza que ML Kit sí calcula.** `Text.Line.getConfidence()`
+existe en Android, pero de los cuatro plugins únicamente `@jcesarmobile/capacitor-ocr` la
+entrega — y también en iOS, vía Vision. Es lo que permite que una app diga "esta foto no me
+convence" en vez de devolver texto malo en silencio.
 
 ---
 

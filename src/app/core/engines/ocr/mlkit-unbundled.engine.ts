@@ -31,7 +31,7 @@ export class MlkitUnbundledEngine implements OcrEngine {
     web: 'no soportado',
   };
   readonly notes =
-    'APK liviano: el modelo lo entrega Play Services. Requiere Play Services presente y, la primera vez, descarga del modelo. Sólo escritura latina.';
+    'APK liviano: el modelo lo entrega Play Services. Requiere Play Services presente y, la primera vez, descarga del modelo. Sólo escritura latina. No expone la confianza que ML Kit sí calcula.';
 
   async isSupported(): Promise<EngineSupport> {
     const platform = Capacitor.getPlatform();

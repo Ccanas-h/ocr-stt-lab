@@ -109,7 +109,7 @@ export class SttPage implements OnDestroy {
   readonly support = signal<Record<string, EngineSupport>>({});
   readonly engineId = signal<string>(this.engines[0]?.id ?? '');
   readonly language = signal('es-CL');
-  readonly level = signal<1 | 2 | 3>(1);
+  readonly level = signal<1 | 2 | 3 | 4>(1);
   readonly phraseId = signal<string>(PHRASE_BANK[0].id);
 
   readonly listening = signal(false);
@@ -268,7 +268,7 @@ export class SttPage implements OnDestroy {
     void this.refreshLanguagePack();
   }
 
-  onLevelChange(level: 1 | 2 | 3): void {
+  onLevelChange(level: 1 | 2 | 3 | 4): void {
     this.level.set(level);
     const first = this.visiblePhrases()[0];
     if (first) this.selectPhrase(first.id);

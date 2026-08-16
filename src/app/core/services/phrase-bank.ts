@@ -15,7 +15,7 @@ export interface LabPhrase {
   id: string;
   /** Lo que hay que leer en voz alta. */
   text: string;
-  level: 1 | 2 | 3;
+  level: 1 | 2 | 3 | 4;
   /** Duración aproximada al dictarla, en segundos. */
   seconds: number;
   /** Monto correcto, para validar la extracción numérica. */
@@ -102,8 +102,96 @@ export const PHRASE_BANK: readonly LabPhrase[] = [
     amount: 48440,
     keyTerms: ['Jumbo', 'leches', 'taladro', 'brocas', 'débito', 'ferretería'],
   },
+
+  // -- Nivel 4: el monto bajo lupa ------------------------------------------
+  // Frases cortas y casi idénticas, para que la única variable sea el número.
+  // Es donde se ve qué formas de monto rompen el reconocimiento.
+  {
+    id: 'n4-mil',
+    level: 4,
+    seconds: 3,
+    text: 'Gasté mil pesos',
+    amount: 1000,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-990',
+    level: 4,
+    seconds: 3,
+    text: 'Gasté novecientos noventa pesos',
+    amount: 990,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-2350',
+    level: 4,
+    seconds: 4,
+    text: 'Gasté dos mil trescientos cincuenta pesos',
+    amount: 2350,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-7234',
+    level: 4,
+    seconds: 5,
+    text: 'Gasté siete mil doscientos treinta y cuatro pesos',
+    amount: 7234,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-15750',
+    level: 4,
+    seconds: 5,
+    text: 'Gasté quince mil setecientos cincuenta pesos',
+    amount: 15750,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-105000',
+    level: 4,
+    seconds: 4,
+    text: 'Gasté ciento cinco mil pesos',
+    amount: 105000,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-99999',
+    level: 4,
+    seconds: 6,
+    text: 'Gasté noventa y nueve mil novecientos noventa y nueve pesos',
+    amount: 99999,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-millon',
+    level: 4,
+    seconds: 5,
+    text: 'Gasté un millón doscientos cincuenta mil pesos',
+    amount: 1250000,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-decimal',
+    level: 4,
+    seconds: 5,
+    // El peso chileno no usa centavos, pero conviene saber qué pasa si alguien
+    // lo dice igual: es la forma que más caro sale si se interpreta mal.
+    text: 'Gasté tres mil quinientos con cincuenta',
+    amount: 3500,
+    keyTerms: [],
+  },
+  {
+    id: 'n4-luca',
+    level: 4,
+    seconds: 3,
+    // Chilenismo cotidiano: una luca son mil pesos. Si el reconocedor lo
+    // transcribe literal, la app tendrá que traducirlo.
+    text: 'Gasté cinco lucas en el almuerzo',
+    amount: 5000,
+    keyTerms: ['almuerzo'],
+  },
 ];
 
-export function phrasesByLevel(level: 1 | 2 | 3): LabPhrase[] {
+export function phrasesByLevel(level: 1 | 2 | 3 | 4): LabPhrase[] {
   return PHRASE_BANK.filter((p) => p.level === level);
 }

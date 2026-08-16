@@ -171,6 +171,65 @@ sirve como sustituto: no tiene un motor de voz funcional.
 > hacer esperar al usuario sino **precalentar** el reconocedor al abrir la pantalla de
 > registrar gasto. La capa de «espera un momento» sólo hace falta si ni así baja.
 
+## Corrida 4 — batería de montos · Galaxy S25, Google on-device, es-US
+
+El objetivo era encontrar **qué formas de monto rompen** el reconocimiento. Frases cortas y
+casi idénticas, para que la única variable fuera el número.
+
+| Se dictó | Google devolvió | Monto extraído | Esperado | |
+| --- | --- | --- | --- | --- |
+| Gasté mil pesos | `gaste 1000 pesos` | 1000 | 1000 | ✅ |
+| Gasté novecientos noventa pesos | `gastein 990 pesos` | 990 | 990 | ✅ |
+| Gasté cinco mil pesos… | `gasté 5000 pesos…` | 5000 | 5000 | ✅ |
+| Pagué doce mil quinientos… | `calle 12 500 en la farmacia` | 12500 | 12500 | ✅ |
+| …siete mil doscientos treinta y cuatro | `gasté 7234 pesos` | 7234 | 7234 | ✅ |
+| …cuarenta y cinco mil novecientos noventa | `Castel 45 990 pesos en falabella` | 45990 | 45990 | ✅ |
+| …un millón doscientos cincuenta mil | `gasté $1250 000 pesos` | 1250000 | 1250000 | ✅ |
+| Gasté tres mil quinientos con cincuenta | `gasté 3500 con 50` | 3500 | 3500 | ✅ |
+| **Gasté cinco lucas en el almuerzo** | **`gasté 5 Lucas en el almuerzo`** | **5** | **5000** | ❌ |
+
+**8 de 9 correctos.** El único fallo es la jerga chilena.
+
+### Lo que se aprende
+
+**1. Google devuelve el número en cinco formatos distintos.** `5000`, `45 990`, `12 500`,
+`7234`, `$1250 000`. No hay una regla: a veces con separador de miles, a veces sin él, a
+veces con espacio, a veces con símbolo de moneda. **La capa de normalización es la que
+sostiene el 8 de 9**; sin ella, cuatro de esos ocho habrían fallado.
+
+**2. El rango no importa.** Desde 990 hasta 1.250.000, todos correctos. No hay un tamaño de
+monto que rompa el reconocimiento.
+
+**3. Los decimales hablados no se vuelven coma.** «tres mil quinientos con cincuenta» salió
+como `3500 con 50`, no como `3.500,50`. Para el peso chileno da igual, pero conviene saber
+que el «con cincuenta» queda como texto suelto y no contamina el monto.
+
+**4. La jerga chilena rompe la extracción, y en silencio.** `cinco lucas` → `5 Lucas`, con
+mayúscula, como si fuera un nombre propio. Monto extraído: **5** en vez de 5000.
+
+> Y el detalle que más enseña: **la similitud de texto de esa toma fue 100 %**. El texto
+> estaba «perfecto»; el monto estaba mil veces mal. Es la demostración de por qué el monto
+> se mide aparte de la similitud, y no como parte de ella.
+
+Corregido agregando una tabla de multiplicadores de jerga (`luca`=1.000, `gamba`=100,
+`palo`=1.000.000). El normalizador pasa ahora **14/14** casos, incluidos los seis formatos
+reales que devolvió Google y los decimales.
+
+### Ventana de arranque del micrófono — medida
+
+| | S25, Google on-device |
+| --- | --- |
+| **Primer arranque (frío)** | **190 ms** |
+| **Arranques siguientes** | **123–131 ms** (5 mediciones) |
+
+Cifras cómodas. La diferencia frío/caliente es de ~60 ms, así que **no hace falta
+precalentar el reconocedor ni poner una pantalla de espera**. Basta con no mentir en la
+interfaz: mostrar «habla ahora» cuando llega `onReadyForSpeech`, no al tocar el botón.
+
+Esto responde la duda abierta: la capa de *loading* que se estaba considerando **no es
+necesaria** en gama alta. Queda por medir en el S20+ para confirmar que tampoco lo es en un
+teléfono de 2020.
+
 ## Pendiente para la primera corrida de voz
 
 - [x] ~~Habilitar reconocimiento local en el S20+~~ → resuelto: usar `es-US`, ya instalado.

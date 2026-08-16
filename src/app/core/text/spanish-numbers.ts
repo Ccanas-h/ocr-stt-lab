@@ -73,11 +73,59 @@ const HUNDREDS: Record<string, number> = {
   novecientas: 900,
 };
 
-/** Palabras que unen partes de un número sin aportar valor. */
-const CONNECTORS = new Set(['y', 'con']);
+/**
+ * Palabras que unen partes de un número sin aportar valor.
+ *
+ * Sólo «y», que en español sí une un número («cuarenta y cinco»). «con» queda
+ * fuera a propósito: es una preposición, y tratarla como unión convertía
+ * «tres mil quinientos con cincuenta» en 3550 en vez de dejar 3500 y 50 como
+ * dos cantidades distintas.
+ */
+const CONNECTORS = new Set(['y']);
+
+/**
+ * Normaliza un número ya escrito con dígitos a su forma canónica.
+ *
+ * Convención chilena y europea: el punto (o el espacio) separa miles y la coma
+ * separa decimales. Confundirlas cuesta caro — `3.500,50` mal interpretado da
+ * 350050, cien veces el valor real.
+ *
+ * Devuelve `undefined` si el token no es un número.
+ */
+function canonicalNumeric(token: string): string | undefined {
+  const digitsOnly = token.replace(/[^\d.,\u00a0\u202f ]/g, '');
+  if (!/^\d/.test(digitsOnly)) return undefined;
+
+  // Punto o espacio fino sólo separan miles cuando les siguen exactamente
+  // tres dígitos. En cualquier otro caso se dejan como están.
+  const withoutThousands = digitsOnly.replace(/[.\u00a0\u202f ](?=\d{3}(?!\d))/g, '');
+  const canonical = withoutThousands.replace(',', '.');
+
+  return /^\d+(\.\d+)?$/.test(canonical) ? canonical : undefined;
+}
 
 const THOUSAND = 'mil';
 const MILLION = new Set(['millon', 'millones']);
+
+/**
+ * Jerga monetaria chilena, tratada como multiplicador.
+ *
+ * No es un adorno: medido en el S25, «cinco lucas» se transcribe como
+ * «5 Lucas» —con mayúscula, como si fuera el nombre— y sin esta tabla el monto
+ * extraído era **5** en vez de 5000. Un error de mil veces, en la frase más
+ * cotidiana que puede decir un usuario chileno.
+ *
+ * Ojo con `palo`: significa millón, y equivocarlo cuesta seis órdenes de
+ * magnitud.
+ */
+const SLANG_MULTIPLIERS: Record<string, number> = {
+  luca: 1000,
+  lucas: 1000,
+  gamba: 100,
+  gambas: 100,
+  palo: 1_000_000,
+  palos: 1_000_000,
+};
 
 function deaccent(word: string): string {
   return word.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -89,7 +137,8 @@ function isNumberWord(word: string): boolean {
     word in HUNDREDS ||
     word === THOUSAND ||
     MILLION.has(word) ||
-    /^\d+$/.test(word)
+    word in SLANG_MULTIPLIERS ||
+    /^\d+(\.\d+)?$/.test(word)
   );
 }
 
@@ -107,7 +156,7 @@ function wordsToNumber(words: readonly string[]): number {
   for (const word of words) {
     if (CONNECTORS.has(word)) continue;
 
-    if (/^\d+$/.test(word)) {
+    if (/^\d+(\.\d+)?$/.test(word)) {
       current += Number(word);
       continue;
     }
@@ -125,6 +174,10 @@ function wordsToNumber(words: readonly string[]): number {
       current = (current === 0 ? 1 : current) * 1_000_000;
       total += current;
       current = 0;
+    } else if (word in SLANG_MULTIPLIERS) {
+      current = (current === 0 ? 1 : current) * SLANG_MULTIPLIERS[word];
+      total += current;
+      current = 0;
     }
   }
 
@@ -139,10 +192,9 @@ function wordsToNumber(words: readonly string[]): number {
  * `«Gasté $45.990»`         → `«Gasté 45990»`
  */
 export function normalizeSpanishNumbers(text: string): string {
-  // Primero los números ya escritos con dígitos: se les quitan los puntos de
-  // millar para que «45.990» y «45990» sean lo mismo. La coma decimal se
-  // conserva porque sí cambia el valor.
-  const out = text.replace(/(\d)[.\u00a0\u202f ](?=\d{3}\b)/g, '$1');
+  // «45 990» viene partido en dos tokens por el espacio, así que el separador
+  // de miles escrito con espacio se une antes de tokenizar.
+  const out = text.replace(/(\d)[\u00a0\u202f ](?=\d{3}(?!\d))/g, '$1');
 
   const tokens = out.split(/(\s+)/);
   const result: string[] = [];
@@ -159,6 +211,14 @@ export function normalizeSpanishNumbers(text: string): string {
     if (/^\s+$/.test(token)) {
       // Un espacio dentro de un número en curso no lo corta.
       if (buffer.length === 0) result.push(token);
+      continue;
+    }
+
+    // Los números con dígitos se canonizan aparte: quitarles la puntuación a
+    // ciegas convertiría «3.500,50» en 350050.
+    const numeric = canonicalNumeric(token);
+    if (numeric !== undefined) {
+      buffer.push(numeric);
       continue;
     }
 
@@ -193,7 +253,7 @@ export function normalizeSpanishNumbers(text: string): string {
  */
 export function extractAmount(text: string): number | undefined {
   const normalized = normalizeSpanishNumbers(text);
-  const matches = normalized.match(/\d+/g);
+  const matches = normalized.match(/\d+(?:\.\d+)?/g);
   if (!matches || matches.length === 0) return undefined;
   return Math.max(...matches.map(Number));
 }

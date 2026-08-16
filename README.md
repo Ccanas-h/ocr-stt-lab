@@ -36,6 +36,15 @@ convence" en vez de devolver texto malo en silencio.
 
 ---
 
+## Documentos
+
+| Documento | Para qué |
+| --- | --- |
+| [BITACORA.md](BITACORA.md) | Las mediciones. Qué librería gana y con qué números. |
+| [GUIA-IMPLEMENTACION.md](GUIA-IMPLEMENTACION.md) | **Cómo implementarlo bien.** Lo aprendido midiendo en dispositivos reales: bugs de plugins, trampas de API, normalización de montos, ventana de arranque del micrófono. |
+| [PLAN-VOZ.md](PLAN-VOZ.md) | Plan de pruebas de voz y alternativas del mercado. |
+| [PLAN-CORPUS.md](PLAN-CORPUS.md) | Cómo ampliar el corpus de imágenes sin problemas de licencia ni datos de terceros. |
+
 ## Decisiones de stack y por qué
 
 | Pieza | Versión | Por qué esta |

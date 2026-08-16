@@ -43,30 +43,64 @@ sí corre en el hilo principal. El bug está aislado en el chequeo de disponibil
 > Vale la pena registrarlo como criterio de elección: un plugin cuya consulta de
 > capacidades cierra la aplicación es una señal de madurez, no un detalle.
 
-### 2. El español on-device NO está instalado en el S20+
+### 2. `ModelDownloadListener` es API 34, y el plugin no lo comprueba
 
-Con el parche puesto, la app responde correctamente:
+El mismo plugin importa `android.speech.ModelDownloadListener` y lo usa sin guardia de
+versión. Esa clase **existe desde API 34**; el S20+ es API 33. Al cargar el plugin:
 
-> «El paquete de español para reconocimiento local no está descargado.
-> Ajustes → Google → Voz → Reconocimiento sin conexión.»
+```
+java.lang.ClassNotFoundException: Didn't find class "android.speech.ModelDownloadListener"
+  at com.getcapacitor.PluginManager.loadPluginClasses
+```
 
-Esto importa más de lo que parece. Si se pide `useOnDeviceRecognition: true` sin el paquete
-descargado, **Android cae a red sin avisar**. Habríamos medido reconocimiento en la nube
-creyendo que medíamos local, y la conclusión sobre privacidad habría sido falsa.
+Otro crash duro, y afecta a un rango grande de dispositivos: el reconocimiento local
+existe desde **API 31**, así que todos los Android 12 y 13 caen en la ventana rota.
 
-Estado de las tres configuraciones en el S20+ (Android 13):
+El parche usa la sobrecarga de un solo argumento, `triggerModelDownload(Intent)`, que sí
+existe en API 33, y reserva la variante con listener para API 34+. Sin callback no hay
+progreso, así que la app vuelve a consultar el estado — de ahí el botón «Volver a
+comprobar».
 
-| Configuración | Estado | Nota |
-| --- | --- | --- |
-| Google on-device | **No disponible** | Falta descargar el paquete de español |
-| Google en red | Disponible | Seleccionada por defecto |
-| Diálogo del sistema | Disponible | — |
+### 3. `es-CL` no existe como modelo local. `es-US` sí, y ya estaba instalado.
 
-Motores presentes en el dispositivo: `com.google.android.tts` v20260720 (el reconocedor
-local, y el `voice_recognition_service` por defecto) y
-`com.google.android.googlequicksearchbox` v17.48 (el de red).
+Éste es el hallazgo con consecuencia directa sobre el producto.
 
-### 3. El normalizador de números pasa 16/16
+Google publica los modelos on-device **por variante regional**, y el español de Chile no
+está entre ellos. Consultando desde el propio teléfono:
+
+| Idioma | Estado del modelo local en el S20+ |
+| --- | --- |
+| `es-CL` | **missing** — no existe como modelo descargable |
+| `es-US` | **installed** — ya estaba en el teléfono |
+
+La primera versión del código consultaba con `es-CL` fijo y concluía «este dispositivo no
+soporta reconocimiento local». Era falso: lo soporta, y el modelo ya estaba ahí. **Para
+usar reconocimiento local en Chile hay que declarar `es-US` (o `es-ES`), no `es-CL`.**
+
+Queda pendiente medir si esa variante afecta el reconocimiento de montos y de nombres de
+comercios chilenos — es justamente lo que compara el banco de frases.
+
+### 4. La descarga se pide desde la app, no desde Ajustes
+
+Android expone `SpeechRecognizer.triggerModelDownload()` justamente para esto. El parche lo
+saca a la superficie como método del plugin, así que la app puede preparar el idioma sola:
+el usuario toca «Descargar modelo» y el sistema se encarga. Mandarlo a
+Ajustes → Google → Voz queda sólo como ruta de rescate, escrita en pantalla por si el
+sistema rechaza la solicitud.
+
+Estado final de las tres configuraciones en el S20+ (Android 13, con `es-US`):
+
+| Configuración | Estado |
+| --- | --- |
+| Google on-device | **Disponible** — modelo `es-US` instalado |
+| Google en red | Disponible |
+| Diálogo del sistema | Disponible |
+
+Motores presentes: `com.google.android.tts` v20260720 (el reconocedor local, y el
+`voice_recognition_service` por defecto) y `com.google.android.googlequicksearchbox`
+v17.48 (el de red).
+
+### 5. El normalizador de números pasa 16/16
 
 La pieza sobre la que descansa toda la medición de voz. Casos cubiertos: palabras puras
 («cuarenta y cinco mil novecientos noventa» → 45990), mixtas («5 mil» → 5000), con
@@ -75,9 +109,10 @@ separador de millar («45.990» → 45990), con símbolo («$5.000» → 5000) y
 
 ## Pendiente para la primera corrida de voz
 
-- [ ] **Descargar el paquete de español offline en el S20+** para poder medir on-device.
+- [x] ~~Habilitar reconocimiento local en el S20+~~ → resuelto: usar `es-US`, ya instalado.
 - [ ] Dictar el banco de frases (nivel 1 y 2 = 8 frases × 3 configuraciones × 3 repeticiones).
-- [ ] Comparar `es-CL` contra `es-US`, que es el idioma que el S20+ trae configurado.
+      **Requiere que una persona hable**: no hay forma de inyectar audio a `SpeechRecognizer`.
+- [ ] Comparar `es-US` contra `es-ES` en reconocimiento de montos y nombres chilenos.
 - [ ] Emulador con audio sintético — requiere instalar un dispositivo de loopback en el Mac.
 - [ ] Repetir una corrida corta con `@capacitor-community/speech-recognition` para separar
       diferencias de plugin de diferencias de motor.

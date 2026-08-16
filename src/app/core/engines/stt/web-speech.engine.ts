@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import {
   EngineSupport,
+  LanguagePackStatus,
   Platform,
   SttEngine,
   SttEvent,
@@ -61,6 +62,7 @@ export class WebSpeechEngine implements SttEngine {
   };
   readonly notes =
     'Andamiaje para probar la pantalla en el navegador. No corre en el WebView nativo y normalmente transcribe en la nube.';
+  readonly needsLanguagePack = false;
 
   private recognition?: WebSpeechRecognition;
   private startedAt = 0;
@@ -72,6 +74,14 @@ export class WebSpeechEngine implements SttEngine {
     return ctor
       ? { available: true, native: false }
       : { available: false, native: false, reason: 'Este WebView no expone SpeechRecognition.' };
+  }
+
+  async checkLanguagePack(): Promise<LanguagePackStatus> {
+    return { state: 'not-applicable', message: 'La API del navegador no usa modelo local.' };
+  }
+
+  async downloadLanguagePack(): Promise<LanguagePackStatus> {
+    return { state: 'not-applicable', message: 'La API del navegador no usa modelo local.' };
   }
 
   async requestPermissions(): Promise<boolean> {

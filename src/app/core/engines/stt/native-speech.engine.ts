@@ -2,11 +2,22 @@ import { Capacitor, PluginListenerHandle } from '@capacitor/core';
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
 import {
   EngineSupport,
+  LanguagePackStatus,
   Platform,
   SttEngine,
   SttEvent,
   SttOptions,
 } from '../../models/lab.models';
+
+/**
+ * `downloadOnDeviceModel` lo agrega nuestro parche al plugin (ver `patches/`).
+ * El plugin ya disparaba la descarga por dentro cuando `start()` encontraba el
+ * modelo ausente, pero sólo abriendo el micrófono; el parche la expone como
+ * acción propia para poder preparar el idioma antes de pedir que hablen.
+ */
+type PatchedSpeechRecognition = typeof SpeechRecognition & {
+  downloadOnDeviceModel(options: { language: string }): Promise<LanguagePackStatus>;
+};
 
 /**
  * Configuración fija de un motor de voz.
@@ -36,6 +47,7 @@ export class NativeSpeechEngine implements SttEngine {
   readonly pkg = '@capgo/capacitor-speech-recognition';
   readonly backend: Record<Platform, string>;
   readonly notes: string;
+  readonly needsLanguagePack: boolean;
 
   private listeners: PluginListenerHandle[] = [];
   private startedAt = 0;
@@ -44,6 +56,7 @@ export class NativeSpeechEngine implements SttEngine {
     this.id = config.id;
     this.label = config.label;
     this.notes = config.notes;
+    this.needsLanguagePack = config.onDevice;
     this.backend = {
       android: config.androidBackend,
       ios: config.iosBackend,
@@ -61,36 +74,54 @@ export class NativeSpeechEngine implements SttEngine {
     }
 
     const { available } = await SpeechRecognition.available();
-    if (!available) {
-      return { available: false, native: true, reason: 'El dispositivo no expone un reconocedor.' };
-    }
+    return {
+      available,
+      native: true,
+      reason: available ? undefined : 'El dispositivo no expone un reconocedor.',
+    };
+  }
 
-    // El diálogo del sistema no tiene modo local: si esta configuración pide
-    // on-device, hay que confirmar que el idioma esté realmente descargado.
-    // Si no lo está, el sistema cae a red **sin avisar** y la medición mentiría.
-    if (this.config.onDevice) {
-      try {
-        const onDevice = await SpeechRecognition.isOnDeviceRecognitionAvailable({
-          language: 'es-CL',
-        });
-        if (!onDevice.available) {
-          return {
-            available: false,
-            native: true,
-            reason:
-              'El paquete de español para reconocimiento local no está descargado. Ajustes → Google → Voz → Reconocimiento sin conexión.',
+  /**
+   * Estado del modelo local **para el idioma que se va a usar**.
+   *
+   * Se consulta con el idioma seleccionado y no con uno fijo: Google publica
+   * los modelos por variante regional, así que `es-US` puede estar disponible
+   * mientras `es-CL` no existe en la lista.
+   */
+  async checkLanguagePack(language: string): Promise<LanguagePackStatus> {
+    if (!this.config.onDevice) {
+      return { state: 'not-applicable', message: 'Esta configuración no usa modelo local.' };
+    }
+    try {
+      const { available } = await SpeechRecognition.isOnDeviceRecognitionAvailable({ language });
+      return available
+        ? { state: 'installed', message: `El modelo de ${language} está disponible.` }
+        : {
+            state: 'missing',
+            message: `El modelo de ${language} no está descargado en este dispositivo.`,
           };
-        }
-      } catch {
-        return {
-          available: false,
-          native: true,
-          reason: 'Esta versión de Android no expone reconocimiento local.',
-        };
-      }
+    } catch (error) {
+      return {
+        state: 'unsupported',
+        message: error instanceof Error ? error.message : String(error),
+      };
     }
+  }
 
-    return { available: true, native: true };
+  async downloadLanguagePack(language: string): Promise<LanguagePackStatus> {
+    if (!this.config.onDevice) {
+      return { state: 'not-applicable', message: 'Esta configuración no usa modelo local.' };
+    }
+    try {
+      return await (SpeechRecognition as PatchedSpeechRecognition).downloadOnDeviceModel({
+        language,
+      });
+    } catch (error) {
+      return {
+        state: 'unsupported',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   async requestPermissions(): Promise<boolean> {

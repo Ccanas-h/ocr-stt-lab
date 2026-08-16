@@ -37,11 +37,13 @@ import { EngineRegistry } from '../../core/engines/engine-registry';
 import {
   DEFAULT_NORMALIZATION,
   EngineSupport,
+  LanguagePackStatus,
   Platform,
   SttEvent,
 } from '../../core/models/lab.models';
 import { LabPhrase, PHRASE_BANK } from '../../core/services/phrase-bank';
 import { percent } from '../../core/text/accuracy';
+import { normalizeSpanishNumbers } from '../../core/text/spanish-numbers';
 import { scoreDictation, SttScore } from '../../core/text/stt-scoring';
 
 /** Una toma: una frase, dictada con un motor, una vez. */
@@ -117,6 +119,18 @@ export class SttPage implements OnDestroy {
   readonly firstPartialMs = signal<number | undefined>(undefined);
   readonly totalMs = signal<number | undefined>(undefined);
 
+  readonly languagePack = signal<LanguagePackStatus | undefined>(undefined);
+  readonly preparing = signal(false);
+
+  /**
+   * Lo que la app realmente recibiría: el texto tal cual, pero con los números
+   * convertidos a dígitos. «cinco mil pesos» → «5000 pesos».
+   */
+  readonly appOutput = computed(() => {
+    const heard = this.finalText() || this.liveText();
+    return heard ? normalizeSpanishNumbers(heard) : '';
+  });
+
   readonly engine = computed(() => this.registry.sttById(this.engineId()));
   readonly currentSupport = computed(() => this.support()[this.engineId()]);
   readonly canListen = computed(() => this.currentSupport()?.available === true);
@@ -161,6 +175,51 @@ export class SttPage implements OnDestroy {
     void this.probe();
   }
 
+  // -- Preparación del modelo local ------------------------------------------
+
+  /**
+   * Estado del modelo local para el idioma elegido.
+   *
+   * Sin este chequeo la app parecería funcionar sin conexión y fallaría justo
+   * cuando el usuario no tiene señal.
+   */
+  async refreshLanguagePack(): Promise<void> {
+    const engine = this.engine();
+    if (!engine?.needsLanguagePack) {
+      this.languagePack.set(undefined);
+      return;
+    }
+    this.languagePack.set(await engine.checkLanguagePack(this.language()));
+  }
+
+  /** Pide al sistema que baje el modelo, sin sacar al usuario de la app. */
+  async prepareLanguagePack(): Promise<void> {
+    const engine = this.engine();
+    if (!engine?.needsLanguagePack) return;
+
+    this.preparing.set(true);
+    try {
+      const status = await engine.downloadLanguagePack(this.language());
+      this.languagePack.set(status);
+      await this.notify(status.message, status.state === 'unsupported' ? 'danger' : 'success');
+    } finally {
+      this.preparing.set(false);
+    }
+  }
+
+  languagePackColor(state: LanguagePackStatus['state']): string {
+    switch (state) {
+      case 'installed':
+        return 'success';
+      case 'downloading':
+        return 'warning';
+      case 'missing':
+        return 'danger';
+      default:
+        return 'medium';
+    }
+  }
+
   ngOnDestroy(): void {
     if (this.listening()) void this.engine()?.stop();
   }
@@ -174,6 +233,7 @@ export class SttPage implements OnDestroy {
 
     const firstAvailable = this.engines.find((e) => map[e.id]?.available);
     if (firstAvailable) this.engineId.set(firstAvailable.id);
+    await this.refreshLanguagePack();
   }
 
   supportOf(id: string): EngineSupport | undefined {
@@ -183,6 +243,12 @@ export class SttPage implements OnDestroy {
   onEngineChange(id: string): void {
     this.engineId.set(id);
     this.reset();
+    void this.refreshLanguagePack();
+  }
+
+  onLanguageChange(language: string): void {
+    this.language.set(language);
+    void this.refreshLanguagePack();
   }
 
   onLevelChange(level: 1 | 2 | 3): void {

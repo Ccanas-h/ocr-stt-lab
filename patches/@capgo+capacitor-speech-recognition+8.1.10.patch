@@ -1,23 +1,73 @@
 diff --git a/node_modules/@capgo/capacitor-speech-recognition/android/src/main/java/app/capgo/speechrecognition/SpeechRecognitionPlugin.java b/node_modules/@capgo/capacitor-speech-recognition/android/src/main/java/app/capgo/speechrecognition/SpeechRecognitionPlugin.java
-index 37e1561..5faf230 100644
+index 37e1561..1d080f6 100644
 --- a/node_modules/@capgo/capacitor-speech-recognition/android/src/main/java/app/capgo/speechrecognition/SpeechRecognitionPlugin.java
 +++ b/node_modules/@capgo/capacitor-speech-recognition/android/src/main/java/app/capgo/speechrecognition/SpeechRecognitionPlugin.java
-@@ -111,6 +111,14 @@ public class SpeechRecognitionPlugin extends Plugin implements Constants {
+@@ -111,6 +111,64 @@ public class SpeechRecognitionPlugin extends Plugin implements Constants {
  
      @PluginMethod
      public void isOnDeviceRecognitionAvailable(PluginCall call) {
-+        // SpeechRecognizer.createOnDeviceSpeechRecognizer() exige el hilo
-+        // principal y lanza RuntimeException (no UnsupportedOperationException)
-+        // si se llama desde otro. Capacitor ejecuta los @PluginMethod en un
-+        // hilo de fondo, asi que sin este salto la app se cae del todo.
++        // createOnDeviceSpeechRecognizer() exige el hilo principal y lanza
++        // RuntimeException si se llama desde otro. Capacitor ejecuta los
++        // @PluginMethod en un hilo de fondo, asi que sin este salto la app se
++        // cae con un crash nativo que JavaScript no puede atrapar.
 +        bridge.getActivity().runOnUiThread(() -> isOnDeviceRecognitionAvailableOnMainThread(call));
++    }
++
++    /**
++     * Pide a Android que descargue el modelo de reconocimiento local.
++     *
++     * Usa deliberadamente la sobrecarga de un solo argumento de
++     * triggerModelDownload(), disponible desde API 33. La sobrecarga con
++     * ModelDownloadListener es API 34, y referenciar esa clase en un
++     * dispositivo API 33 revienta con ClassNotFoundException al cargar el
++     * plugin. Sin callback no hay progreso: la app vuelve a consultar el
++     * estado con isOnDeviceRecognitionAvailable().
++     */
++    @PluginMethod
++    public void downloadOnDeviceModel(PluginCall call) {
++        bridge.getActivity().runOnUiThread(() -> downloadOnDeviceModelOnMainThread(call));
++    }
++
++    private void downloadOnDeviceModelOnMainThread(PluginCall call) {
++        String language = call.getString("language", Locale.getDefault().toLanguageTag());
++
++        if (!canUseOnDeviceRecognition()) {
++            call.resolve(
++                new JSObject().put("state", "unsupported").put("message", "Esta version de Android no admite reconocimiento local.")
++            );
++            return;
++        }
++
++        final SpeechRecognizer downloader;
++        try {
++            downloader = SpeechRecognizer.createOnDeviceSpeechRecognizer(bridge.getActivity());
++        } catch (RuntimeException ex) {
++            call.resolve(
++                new JSObject().put("state", "unsupported").put("message", "El dispositivo no expone un reconocedor local.")
++            );
++            return;
++        }
++
++        try {
++            Intent intent = buildRecognizerIntent(language, MAX_RESULTS, null, false, 0, true);
++            downloader.triggerModelDownload(intent);
++            call.resolve(
++                new JSObject()
++                    .put("state", "downloading")
++                    .put("message", "Descarga solicitada al sistema. Puede tardar unos minutos; vuelve a comprobar.")
++            );
++        } catch (RuntimeException ex) {
++            call.resolve(new JSObject().put("state", "unsupported").put("message", String.valueOf(ex.getMessage())));
++        } finally {
++            downloader.destroy();
++        }
 +    }
 +
 +    private void isOnDeviceRecognitionAvailableOnMainThread(PluginCall call) {
          String language = call.getString("language", Locale.getDefault().toLanguageTag());
          if (!canUseOnDeviceRecognition()) {
              call.resolve(new JSObject().put("available", false));
-@@ -120,7 +128,7 @@ public class SpeechRecognitionPlugin extends Plugin implements Constants {
+@@ -120,7 +178,7 @@ public class SpeechRecognitionPlugin extends Plugin implements Constants {
          final SpeechRecognizer supportChecker;
          try {
              supportChecker = SpeechRecognizer.createOnDeviceSpeechRecognizer(bridge.getActivity());
@@ -26,3 +76,24 @@ index 37e1561..5faf230 100644
              call.resolve(new JSObject().put("available", false));
              return;
          }
+@@ -701,6 +759,20 @@ public class SpeechRecognitionPlugin extends Plugin implements Constants {
+         long currentSessionId,
+         boolean restarting
+     ) {
++        // ModelDownloadListener es API 34. En API 33 la clase no existe y
++        // referenciarla revienta el proceso, asi que ahi se usa la variante
++        // sin callback y se avisa al llamador de que reintente.
++        if (android.os.Build.VERSION.SDK_INT < 34) {
++            speechRecognizer.triggerModelDownload(intent);
++            String message = "On-device speech model download was requested. Try again once it finishes.";
++            if (call != null) {
++                call.reject(message);
++            }
++            emitErrorEvent("MODEL_DOWNLOAD_SCHEDULED", message, currentSessionId);
++            finishSession(currentSessionId, "error", "MODEL_DOWNLOAD_SCHEDULED");
++            return;
++        }
++
+         speechRecognizer.triggerModelDownload(
+             intent,
+             mainExecutor(),

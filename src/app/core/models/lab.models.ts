@@ -136,6 +136,25 @@ export interface SttEvent {
   atMs: number;
 }
 
+/**
+ * Estado del modelo de reconocimiento local para un idioma.
+ *
+ * `missing` es el estado peligroso: el idioma existe pero no está bajado. Sin
+ * detectarlo, la app parecería funcionar sin conexión y fallaría justo cuando
+ * el usuario no tiene señal.
+ */
+export type LanguagePackState =
+  | 'installed'
+  | 'missing'
+  | 'downloading'
+  | 'unsupported'
+  | 'not-applicable';
+
+export interface LanguagePackStatus {
+  state: LanguagePackState;
+  message: string;
+}
+
 export interface SttEngine {
   readonly id: string;
   readonly label: string;
@@ -143,8 +162,14 @@ export interface SttEngine {
   readonly pkg: string;
   readonly backend: Record<Platform, string>;
   readonly notes: string;
+  /** `true` si este motor depende de un modelo descargado en el dispositivo. */
+  readonly needsLanguagePack: boolean;
 
   isSupported(): Promise<EngineSupport>;
+  /** Estado del modelo local para el idioma indicado. */
+  checkLanguagePack(language: string): Promise<LanguagePackStatus>;
+  /** Pide al sistema que descargue el modelo local. */
+  downloadLanguagePack(language: string): Promise<LanguagePackStatus>;
   requestPermissions(): Promise<boolean>;
   getSupportedLanguages(): Promise<string[]>;
   /** Comienza a escuchar. Cada evento se entrega por `onEvent`. */

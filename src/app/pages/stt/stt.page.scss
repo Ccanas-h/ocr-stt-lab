@@ -24,6 +24,11 @@
   font-weight: 500;
 }
 
+/* La salida ya normalizada es el dato que consumiría la app, no un detalle. */
+.lab-app-output {
+  border-left: 3px solid var(--ion-color-success);
+}
+
 .lab-ok {
   color: var(--ion-color-success);
 }

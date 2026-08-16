@@ -1,0 +1,107 @@
+.lab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+/* Segunda línea de cada motor: ficha técnica pegada a su checkbox. */
+.lab-engine-detail {
+  --padding-start: 2.9rem;
+  --min-height: 0;
+
+  p {
+    margin: 0 0 0.2rem;
+  }
+
+  ion-icon {
+    vertical-align: -2px;
+    margin-right: 0.25rem;
+  }
+}
+
+/* Los campos clave se leen de un vistazo: verde encontrado, rojo perdido. */
+.lab-keyfields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.25rem 0 0.5rem;
+
+  ion-chip {
+    margin: 0;
+    font-size: 0.72rem;
+    height: 1.6rem;
+  }
+}
+
+/* La tabla puede tener más columnas que ancho de pantalla: se desplaza sola. */
+.lab-table-scroll {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.lab-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 30rem;
+  font-size: 0.78rem;
+
+  th,
+  td {
+    padding: 0.45rem 0.55rem;
+    border-bottom: 1px solid var(--ion-color-step-150, #e0e0e0);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  thead th {
+    font-weight: 600;
+    color: var(--ion-color-medium);
+    font-size: 0.7rem;
+    line-height: 1.25;
+  }
+
+  tbody th {
+    font-weight: 500;
+    max-width: 9rem;
+  }
+
+  td {
+    white-space: nowrap;
+
+    strong {
+      display: block;
+      font-family: var(--lab-mono);
+      font-size: 0.95rem;
+    }
+
+    small {
+      display: block;
+      color: var(--ion-color-medium);
+      font-size: 0.68rem;
+    }
+  }
+
+  .lab-cell-fail {
+    color: var(--ion-color-danger);
+  }
+
+  ion-badge {
+    font-size: 0.6rem;
+    margin-top: 0.2rem;
+  }
+}
+
+a {
+  color: var(--ion-color-primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+code {
+  font-family: var(--lab-mono);
+  font-size: 0.75rem;
+  padding: 0.05rem 0.25rem;
+  border-radius: 4px;
+  background: var(--ion-color-light);
+}

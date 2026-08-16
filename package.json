@@ -1,0 +1,74 @@
+{
+  "name": "ocr-stt-lab",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "sync": "ng build && npx cap sync",
+    "build:android": "ng build && npx cap copy android && cd android && ./gradlew assembleDebug",
+    "install:android": "adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
+    "build:ios": "ng build && npx cap sync ios",
+    "open:android": "npx cap open android",
+    "open:ios": "npx cap open ios",
+    "stt:use-community": "npm uninstall @capgo/capacitor-speech-recognition && npm i @capacitor-community/speech-recognition && npx cap sync",
+    "stt:use-capgo": "npm uninstall @capacitor-community/speech-recognition && npm i @capgo/capacitor-speech-recognition && npx cap sync"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/common": "^20.3.0",
+    "@angular/compiler": "^20.3.0",
+    "@angular/core": "^20.3.0",
+    "@angular/forms": "^20.3.0",
+    "@angular/platform-browser": "^20.3.0",
+    "@angular/router": "^20.3.0",
+    "@capacitor-mlkit/document-scanner": "^8.1.0",
+    "@capacitor-mlkit/text-recognition": "^8.2.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/camera": "^8.2.2",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/device": "^8.0.3",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/share": "^8.0.1",
+    "@capgo/capacitor-speech-recognition": "^8.1.10",
+    "@ionic/angular": "^8.8.18",
+    "@jcesarmobile/capacitor-ocr": "^0.3.0",
+    "@pantrist/capacitor-plugin-ml-kit-text-recognition": "^8.0.0",
+    "ionicons": "^8.1.0",
+    "rxjs": "~7.8.0",
+    "tesseract.js": "^7.0.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^20.3.30",
+    "@angular/cli": "^20.3.30",
+    "@angular/compiler-cli": "^20.3.0",
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
+    "@types/jasmine": "~5.1.0",
+    "jasmine-core": "~5.9.0",
+    "karma": "~6.4.0",
+    "karma-chrome-launcher": "~3.2.0",
+    "karma-coverage": "~2.2.0",
+    "karma-jasmine": "~5.1.0",
+    "karma-jasmine-html-reporter": "~2.1.0",
+    "typescript": "~5.9.2"
+  }
+}

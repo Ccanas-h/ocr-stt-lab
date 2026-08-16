@@ -1,0 +1,83 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>Entorno</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Dispositivo</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-list lines="full">
+        @for (row of device(); track row.label) {
+          <ion-item>
+            <ion-label>{{ row.label }}</ion-label>
+            <ion-note slot="end" class="lab-mono">{{ row.value }}</ion-note>
+          </ion-item>
+        }
+      </ion-list>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-card>
+    <ion-card-header>
+      <ion-card-subtitle>Imagen → texto</ion-card-subtitle>
+      <ion-card-title>Motores OCR</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-list lines="full">
+        @for (engine of ocrEngines; track engine.id) {
+          <ion-item>
+            <ion-icon
+              slot="start"
+              [name]="ocrSupportOf(engine.id)?.available ? 'checkmark-circle' : 'close-circle'"
+              [color]="ocrSupportOf(engine.id)?.available ? 'success' : 'medium'"
+            />
+            <ion-label class="ion-text-wrap">
+              <h3>{{ engine.label }}</h3>
+              <p class="lab-mono">{{ engine.pkg }}</p>
+              <p>{{ backendFor(engine.backend) }}</p>
+              @if (ocrSupportOf(engine.id); as s) {
+                @if (!s.available) {
+                  <p class="lab-hint">{{ s.reason }}</p>
+                }
+              }
+            </ion-label>
+          </ion-item>
+        }
+      </ion-list>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-card>
+    <ion-card-header>
+      <ion-card-subtitle>Voz → texto</ion-card-subtitle>
+      <ion-card-title>Motores de transcripción</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-list lines="full">
+        @for (engine of sttEngines; track engine.id) {
+          <ion-item>
+            <ion-icon
+              slot="start"
+              [name]="sttSupportOf(engine.id)?.available ? 'checkmark-circle' : 'close-circle'"
+              [color]="sttSupportOf(engine.id)?.available ? 'success' : 'medium'"
+            />
+            <ion-label class="ion-text-wrap">
+              <h3>{{ engine.label }}</h3>
+              <p class="lab-mono">{{ engine.pkg }}</p>
+              <p>{{ backendFor(engine.backend) }}</p>
+              @if (sttSupportOf(engine.id); as s) {
+                @if (!s.available) {
+                  <p class="lab-hint">{{ s.reason }}</p>
+                }
+              }
+            </ion-label>
+          </ion-item>
+        }
+      </ion-list>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

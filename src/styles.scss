@@ -1,0 +1,65 @@
+/* Estilos globales del laboratorio. Ionic aporta el resto vía angular.json. */
+
+:root {
+  --lab-mono: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+}
+
+.lab-mono {
+  font-family: var(--lab-mono);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Etiqueta compacta para métricas: "142 ms", "98.3%", etc. */
+.lab-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+
+  strong {
+    font-family: var(--lab-mono);
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  small {
+    color: var(--ion-color-medium);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}
+
+.lab-metric-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.lab-hint {
+  color: var(--ion-color-medium);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+/* El texto reconocido puede ser largo: se acota y se hace desplazable. */
+.lab-output {
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  background: var(--ion-color-light);
+  color: var(--ion-color-dark);
+}
+
+.lab-image-preview {
+  display: block;
+  width: 100%;
+  max-height: 22rem;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--ion-color-light);
+}

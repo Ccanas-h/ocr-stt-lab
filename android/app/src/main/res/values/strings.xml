@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OCR/STT Lab</string>
+    <string name="title_activity_main">OCR/STT Lab</string>
+    <string name="package_name">cl.investigacion.ocrsttlab</string>
+    <string name="custom_url_scheme">cl.investigacion.ocrsttlab</string>
+</resources>

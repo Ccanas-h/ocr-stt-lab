@@ -1,0 +1,577 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>Imagen → texto</ion-title>
+    <ion-buttons slot="end">
+      @if (report()) {
+        <ion-button (click)="shareReport()" title="Exportar informe JSON">
+          <ion-icon slot="icon-only" name="share-outline" />
+        </ion-button>
+      }
+      <ion-button (click)="clear()" title="Limpiar">
+        <ion-icon slot="icon-only" name="trash" />
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  @if (busy()) {
+    <ion-progress-bar type="indeterminate" />
+  }
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+  @if (busy() && busyLabel()) {
+    <ion-chip color="primary">
+      <ion-spinner name="dots" />
+      <ion-label>{{ busyLabel() }}</ion-label>
+    </ion-chip>
+  }
+
+  <!-- 1 · Imagen ---------------------------------------------------------- -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-subtitle>Paso 1</ion-card-subtitle>
+      <ion-card-title>Imagen a analizar</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-segment [value]="sourceMode()" (ionChange)="sourceMode.set($any($event.detail.value))">
+        <ion-segment-button value="samples">
+          <ion-label>Muestras</ion-label>
+        </ion-segment-button>
+        <ion-segment-button value="capture">
+          <ion-label>Capturar</ion-label>
+        </ion-segment-button>
+        <ion-segment-button value="synthetic">
+          <ion-label>Generar</ion-label>
+        </ion-segment-button>
+      </ion-segment>
+
+      @if (sourceMode() === 'samples') {
+        @if (sampleList().length === 0) {
+          <p class="lab-hint">
+            No hay galería preparada. Copia tus imágenes a <code>public/samples/</code> y
+            describe cada una en <code>manifest.json</code> siguiendo
+            <code>manifest.example.json</code>. La carpeta está en <code>.gitignore</code>:
+            las boletas reales traen datos personales que no deben publicarse.
+          </p>
+        } @else {
+          <p class="lab-hint">
+            Imágenes reales con su transcripción y campos clave ya preparados. Siempre los
+            mismos bytes, así que los resultados se pueden comparar entre dispositivos.
+          </p>
+          <ion-list lines="full">
+            @for (sample of sampleList(); track sample.id) {
+              <ion-item
+                button
+                [color]="activeSample()?.id === sample.id ? 'light' : undefined"
+                (click)="pickSample(sample)"
+              >
+                <ion-label class="ion-text-wrap">
+                  <h3>{{ sample.label }}</h3>
+                  <p>{{ sample.conditions }}</p>
+                </ion-label>
+                <ion-badge slot="end" [color]="difficultyColor(sample.difficulty)">
+                  {{ sample.difficulty }}
+                </ion-badge>
+              </ion-item>
+            }
+          </ion-list>
+
+          <ion-button
+            expand="block"
+            fill="outline"
+            [disabled]="busy() || selectedCount() === 0"
+            (click)="runSuite()"
+          >
+            <ion-icon slot="start" name="grid-outline" />
+            Ejecutar galería completa ({{ sampleList().length }} × {{ selectedCount() }})
+          </ion-button>
+          <p class="lab-hint">
+            Corre todas las muestras contra todos los motores en una sola sesión y arma la
+            tabla comparativa. Es lo que garantiza que todos vieron las mismas imágenes con
+            el teléfono en el mismo estado.
+          </p>
+        }
+      } @else if (sourceMode() === 'capture') {
+        <div class="lab-actions">
+          <ion-button fill="outline" size="small" (click)="pickCamera()">
+            <ion-icon slot="start" name="camera" />
+            Cámara
+          </ion-button>
+          <ion-button fill="outline" size="small" (click)="pickGallery()">
+            <ion-icon slot="start" name="images" />
+            Galería
+          </ion-button>
+          @if (platform === 'android') {
+            <ion-button
+              fill="outline"
+              size="small"
+              [disabled]="!scannerAvailable()"
+              (click)="pickDocumentScanner()"
+            >
+              <ion-icon slot="start" name="scan" />
+              Escáner doc.
+            </ion-button>
+          }
+        </div>
+        @if (platform === 'android' && !scannerAvailable()) {
+          <p class="lab-hint">
+            El escáner de documentos de ML Kit (recorte y enderezado automáticos) no está
+            instalado en este dispositivo.
+            <a (click)="installScanner()">Instalarlo desde Play Services</a>.
+          </p>
+        }
+        <p class="lab-hint">
+          La foto se usa tal cual sale de la cámara, sin recorte ni recompresión, para que
+          todos los motores reciban exactamente los mismos píxeles.
+        </p>
+      } @else {
+        <p class="lab-hint">
+          Genera una imagen cuyo texto conocemos con exactitud: la referencia se completa sola
+          y puedes degradar una variable a la vez para ver cuál rompe antes a cada motor.
+        </p>
+
+        <ion-item lines="none">
+          <ion-textarea
+            label="Texto a dibujar"
+            labelPlacement="stacked"
+            [autoGrow]="true"
+            [value]="syntheticOptions().text"
+            (ionInput)="setSynthetic('text', $any($event.detail.value ?? ''))"
+          />
+        </ion-item>
+
+        <ion-item lines="none">
+          <ion-range
+            label="Rotación"
+            labelPlacement="start"
+            [min]="-30"
+            [max]="30"
+            [step]="1"
+            [pin]="true"
+            [value]="syntheticOptions().rotationDeg"
+            (ionChange)="setSynthetic('rotationDeg', $any($event.detail.value))"
+          />
+          <ion-note slot="end">{{ syntheticOptions().rotationDeg }}°</ion-note>
+        </ion-item>
+
+        <ion-item lines="none">
+          <ion-range
+            label="Desenfoque"
+            labelPlacement="start"
+            [min]="0"
+            [max]="6"
+            [step]="0.5"
+            [pin]="true"
+            [value]="syntheticOptions().blurPx"
+            (ionChange)="setSynthetic('blurPx', $any($event.detail.value))"
+          />
+          <ion-note slot="end">{{ syntheticOptions().blurPx }} px</ion-note>
+        </ion-item>
+
+        <ion-item lines="none">
+          <ion-range
+            label="Ruido"
+            labelPlacement="start"
+            [min]="0"
+            [max]="0.6"
+            [step]="0.05"
+            [pin]="true"
+            [value]="syntheticOptions().noise"
+            (ionChange)="setSynthetic('noise', $any($event.detail.value))"
+          />
+          <ion-note slot="end">{{ pct(syntheticOptions().noise) }}</ion-note>
+        </ion-item>
+
+        <ion-item lines="none">
+          <ion-range
+            label="Contraste"
+            labelPlacement="start"
+            [min]="0.1"
+            [max]="1"
+            [step]="0.05"
+            [pin]="true"
+            [value]="syntheticOptions().contrast"
+            (ionChange)="setSynthetic('contrast', $any($event.detail.value))"
+          />
+          <ion-note slot="end">{{ pct(syntheticOptions().contrast) }}</ion-note>
+        </ion-item>
+
+        <ion-item lines="none">
+          <ion-range
+            label="Calidad JPEG"
+            labelPlacement="start"
+            [min]="0.2"
+            [max]="1"
+            [step]="0.05"
+            [pin]="true"
+            [value]="syntheticOptions().jpegQuality"
+            (ionChange)="setSynthetic('jpegQuality', $any($event.detail.value))"
+          />
+          <ion-note slot="end">{{ pct(syntheticOptions().jpegQuality) }}</ion-note>
+        </ion-item>
+
+        <ion-button expand="block" fill="outline" (click)="generateSynthetic()">
+          <ion-icon slot="start" name="color-wand" />
+          Generar imagen
+        </ion-button>
+      }
+
+      @if (image(); as img) {
+        <img class="lab-image-preview ion-margin-top" [src]="img.webPath" alt="Imagen a analizar" />
+        <div class="lab-metric-row">
+          <span class="lab-metric"><strong>{{ img.width }}×{{ img.height }}</strong><small>px</small></span>
+          <span class="lab-metric"><strong>{{ kb(img.byteLength) }}</strong><small>peso</small></span>
+          <span class="lab-metric"><strong>{{ img.mimeType }}</strong><small>formato</small></span>
+          <span class="lab-metric"><strong>{{ img.source }}</strong><small>origen</small></span>
+        </div>
+      }
+    </ion-card-content>
+  </ion-card>
+
+  <!-- 2 · Motores --------------------------------------------------------- -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-subtitle>Paso 2</ion-card-subtitle>
+      <ion-card-title>Motores a comparar</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-list lines="full">
+        @for (engine of engines; track engine.id) {
+          <ion-item>
+            <ion-checkbox
+              justify="start"
+              labelPlacement="end"
+              [checked]="isSelected(engine.id)"
+              [disabled]="!supportOf(engine.id)?.available"
+              (ionChange)="toggleEngine(engine.id, $event.detail.checked)"
+            >
+              <ion-label class="ion-text-wrap">
+                <h3>{{ engine.label }}</h3>
+                <p>{{ engine.vendor }}</p>
+              </ion-label>
+            </ion-checkbox>
+          </ion-item>
+          <ion-item lines="none" class="lab-engine-detail">
+            <ion-label class="ion-text-wrap">
+              <p class="lab-hint">
+                <ion-icon
+                  [name]="supportOf(engine.id)?.native ? 'hardware-chip-outline' : 'globe-outline'"
+                />
+                {{ backendFor(engine.backend) }}
+              </p>
+              <p class="lab-hint">{{ engine.notes }}</p>
+              @if (supportOf(engine.id); as s) {
+                @if (!s.available) {
+                  <ion-badge color="medium">{{ s.reason }}</ion-badge>
+                }
+              }
+            </ion-label>
+          </ion-item>
+        }
+      </ion-list>
+    </ion-card-content>
+  </ion-card>
+
+  <!-- 3 · Parámetros ------------------------------------------------------ -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-subtitle>Paso 3</ion-card-subtitle>
+      <ion-card-title>Parámetros y texto de referencia</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-item>
+        <ion-select
+          label="Escritura (ML Kit)"
+          labelPlacement="stacked"
+          interface="popover"
+          [value]="script()"
+          (ionChange)="script.set($any($event.detail.value))"
+        >
+          <ion-select-option value="LATIN">Latina</ion-select-option>
+          <ion-select-option value="CHINESE">China</ion-select-option>
+          <ion-select-option value="DEVANAGARI">Devanagari</ion-select-option>
+          <ion-select-option value="JAPANESE">Japonesa</ion-select-option>
+          <ion-select-option value="KOREAN">Coreana</ion-select-option>
+        </ion-select>
+      </ion-item>
+
+      <ion-item>
+        <ion-select
+          label="Idioma (Tesseract)"
+          labelPlacement="stacked"
+          interface="popover"
+          [value]="tesseractLang()"
+          (ionChange)="tesseractLang.set($any($event.detail.value))"
+        >
+          <ion-select-option value="spa">Español</ion-select-option>
+          <ion-select-option value="eng">Inglés</ion-select-option>
+          <ion-select-option value="spa+eng">Español + inglés</ion-select-option>
+        </ion-select>
+      </ion-item>
+
+      <ion-item>
+        <ion-range
+          label="Pasadas por motor"
+          labelPlacement="stacked"
+          [min]="1"
+          [max]="7"
+          [step]="1"
+          [pin]="true"
+          [snaps]="true"
+          [ticks]="true"
+          [value]="runsPerEngine()"
+          (ionChange)="runsPerEngine.set($any($event.detail.value))"
+        />
+        <ion-note slot="end">{{ runsPerEngine() }}</ion-note>
+      </ion-item>
+      <p class="lab-hint">
+        Se reporta la mediana de las pasadas y, aparte, el arranque en frío (la primera, que
+        incluye cargar el modelo). Con 3 o más pasadas el ruido térmico del teléfono deja de
+        distorsionar la comparación.
+      </p>
+
+      <ion-item lines="none">
+        <ion-textarea
+          label="Texto real de la imagen (referencia)"
+          labelPlacement="stacked"
+          [autoGrow]="true"
+          [rows]="4"
+          placeholder="Transcribe aquí lo que dice la imagen para medir precisión. Si generaste la imagen, ya viene completo."
+          [value]="groundTruth()"
+          (ionInput)="groundTruth.set($any($event.detail.value ?? ''))"
+          (ionBlur)="rescore()"
+        />
+      </ion-item>
+
+      <ion-item lines="none">
+        <ion-textarea
+          label="Campos clave (uno por línea)"
+          labelPlacement="stacked"
+          [autoGrow]="true"
+          [rows]="3"
+          placeholder="RUT, folio, total… los datos que la app de verdad necesita extraer."
+          [value]="keyFieldsText()"
+          (ionInput)="setKeyFieldsText($any($event.detail.value ?? ''))"
+          (ionBlur)="rescore()"
+        />
+      </ion-item>
+      <p class="lab-hint">
+        Esta es la métrica que decide. A una app que digitaliza boletas no le importa que el
+        motor reordene las columnas —cosa que castiga al CER— sino si el RUT y el total
+        están ahí. Se busca cada campo dentro del texto reconocido, sin importar el orden.
+      </p>
+
+      <ion-accordion-group>
+        <ion-accordion value="norm">
+          <ion-item slot="header" lines="none">
+            <ion-label>Reglas de comparación</ion-label>
+          </ion-item>
+          <div slot="content">
+            <ion-item>
+              <ion-checkbox
+                justify="space-between"
+                [checked]="normalization().lowercase"
+                (ionChange)="setNormalization('lowercase', $event.detail.checked)"
+              >
+                Ignorar mayúsculas
+              </ion-checkbox>
+            </ion-item>
+            <ion-item>
+              <ion-checkbox
+                justify="space-between"
+                [checked]="normalization().stripAccents"
+                (ionChange)="setNormalization('stripAccents', $event.detail.checked)"
+              >
+                Ignorar tildes
+              </ion-checkbox>
+            </ion-item>
+            <ion-item>
+              <ion-checkbox
+                justify="space-between"
+                [checked]="normalization().stripPunctuation"
+                (ionChange)="setNormalization('stripPunctuation', $event.detail.checked)"
+              >
+                Ignorar puntuación
+              </ion-checkbox>
+            </ion-item>
+            <ion-item lines="none">
+              <ion-checkbox
+                justify="space-between"
+                [checked]="normalization().collapseWhitespace"
+                (ionChange)="setNormalization('collapseWhitespace', $event.detail.checked)"
+              >
+                Normalizar espacios y saltos de línea
+              </ion-checkbox>
+            </ion-item>
+          </div>
+        </ion-accordion>
+      </ion-accordion-group>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-button expand="block" size="large" [disabled]="!canRun()" (click)="run()">
+    <ion-icon slot="start" name="play" />
+    Ejecutar {{ selectedCount() }} motor(es)
+  </ion-button>
+
+  <!-- Resultados del lote -------------------------------------------------- -->
+  @if (suite(); as s) {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-subtitle>
+          {{ s.device }} · {{ s.os }} · {{ s.runsPerEngine }} pasada(s)
+        </ion-card-subtitle>
+        <ion-card-title>Tabla comparativa</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p class="lab-hint">
+          Campos clave recuperados por muestra. Es la métrica que decide: mide si la app
+          podría hacer su trabajo, sin castigar al motor por reordenar columnas.
+        </p>
+
+        <div class="lab-table-scroll">
+          <table class="lab-table">
+            <thead>
+              <tr>
+                <th>Muestra</th>
+                @for (id of suiteEngineIds(); track id) {
+                  <th>{{ suiteEngineLabel(id) }}</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (entry of s.entries; track entry.sampleId) {
+                <tr>
+                  <th scope="row">
+                    {{ entry.label }}
+                    <ion-badge [color]="difficultyColor(entry.difficulty)">
+                      {{ entry.difficulty }}
+                    </ion-badge>
+                  </th>
+                  @for (id of suiteEngineIds(); track id) {
+                    @if (suiteCell(entry, id); as run) {
+                      <td [class.lab-cell-fail]="run.status !== 'ok'">
+                        @if (run.status === 'ok') {
+                          <strong>{{ keyFieldHits(run) }}</strong>
+                          <small>{{ pct(run.keyFieldScore) }}</small>
+                          <small>{{ run.medianMs }} ms</small>
+                        } @else {
+                          <small>{{ run.status === 'unsupported' ? 'n/d' : 'error' }}</small>
+                        }
+                      </td>
+                    } @else {
+                      <td><small>—</small></td>
+                    }
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <ion-button size="small" fill="clear" (click)="shareSuiteMarkdown()">
+          <ion-icon slot="start" name="document-text-outline" />
+          Exportar tabla Markdown
+        </ion-button>
+        <ion-button size="small" fill="clear" (click)="shareSuiteJson()">
+          <ion-icon slot="start" name="code-slash-outline" />
+          Exportar JSON
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+
+  <!-- 4 · Resultados ------------------------------------------------------ -->
+  @if (report(); as rep) {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-subtitle>
+          {{ rep.platform }} · {{ rep.runsPerEngine }} pasada(s) ·
+          {{ rep.image.width }}×{{ rep.image.height }}
+        </ion-card-subtitle>
+        <ion-card-title>Resultados</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        @if (!rep.groundTruth) {
+          <p class="lab-hint">
+            Sin texto de referencia sólo se comparan tiempos. Escribe arriba lo que dice la
+            imagen y las métricas de precisión aparecerán sin volver a ejecutar nada.
+          </p>
+        }
+
+        <ion-accordion-group [multiple]="true">
+          @for (run of rep.runs; track run.engineId) {
+            <ion-accordion [value]="run.engineId">
+              <ion-item slot="header" [color]="run.engineId === bestRunId() ? 'light' : undefined">
+                <ion-icon
+                  slot="start"
+                  [name]="statusIcon(run)"
+                  [color]="statusColor(run)"
+                />
+                <ion-label class="ion-text-wrap">
+                  <h3>{{ run.engineLabel }}</h3>
+                  @if (run.status === 'ok') {
+                    <p>
+                      {{ run.medianMs }} ms
+                      @if (run.keyFields) {
+                        · {{ keyFieldHits(run) }} campos clave
+                      }
+                      · {{ pct(run.accuracy?.similarity) }} similitud
+                      @if (run.engineId === bestRunId()) { · mejor }
+                    </p>
+                  } @else {
+                    <p>{{ run.error }}</p>
+                  }
+                </ion-label>
+              </ion-item>
+
+              <div slot="content" class="ion-padding-horizontal ion-padding-bottom">
+                @if (run.status === 'ok') {
+                  <div class="lab-metric-row">
+                    <span class="lab-metric"><strong>{{ run.medianMs }}</strong><small>ms mediana</small></span>
+                    <span class="lab-metric"><strong>{{ run.coldMs }}</strong><small>ms en frío</small></span>
+                    <span class="lab-metric"><strong>{{ run.text.length }}</strong><small>caracteres</small></span>
+                    <span class="lab-metric"><strong>{{ run.blocks.length }}</strong><small>bloques</small></span>
+                    @if (run.confidence !== undefined) {
+                      <span class="lab-metric"><strong>{{ pct(run.confidence) }}</strong><small>confianza</small></span>
+                    }
+                  </div>
+
+                  @if (run.accuracy; as acc) {
+                    <div class="lab-metric-row">
+                      <span class="lab-metric"><strong>{{ pct(acc.similarity) }}</strong><small>similitud</small></span>
+                      <span class="lab-metric"><strong>{{ pct(acc.cer) }}</strong><small>error car. (CER)</small></span>
+                      <span class="lab-metric"><strong>{{ pct(acc.wer) }}</strong><small>error palab. (WER)</small></span>
+                      <span class="lab-metric"><strong>{{ acc.hypWords }}/{{ acc.refWords }}</strong><small>palabras</small></span>
+                    </div>
+                  }
+
+                  @if (run.keyFields; as fields) {
+                    <div class="lab-keyfields">
+                      @for (field of fields; track field.value) {
+                        <ion-chip [color]="field.found ? 'success' : 'danger'" [outline]="!field.found">
+                          <ion-icon [name]="field.found ? 'checkmark' : 'close'" />
+                          <ion-label>{{ field.value }}</ion-label>
+                        </ion-chip>
+                      }
+                    </div>
+                  }
+
+                  <p class="lab-hint">Pasadas: {{ run.timingsMs.join(' · ') }} ms</p>
+
+                  <div class="lab-output lab-mono">{{ run.text || '(sin texto reconocido)' }}</div>
+
+                  <ion-button size="small" fill="clear" (click)="copyText(run)">
+                    <ion-icon slot="start" name="copy-outline" />
+                    Copiar
+                  </ion-button>
+                } @else {
+                  <p class="lab-hint">{{ run.error }}</p>
+                }
+              </div>
+            </ion-accordion>
+          }
+        </ion-accordion-group>
+      </ion-card-content>
+    </ion-card>
+  }
+</ion-content>

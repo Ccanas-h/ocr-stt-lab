@@ -1,0 +1,59 @@
+# ---------------------------------------------------------------------------
+# Datos personales — NO versionar
+# ---------------------------------------------------------------------------
+# Las boletas y documentos de prueba son reales: traen nombres, RUT, cuentas
+# bancarias y correos de terceros. El repositorio es público y sólo debe llevar
+# el código y las métricas agregadas, nunca las imágenes ni sus transcripciones.
+images-test/
+public/samples/*
+!public/samples/manifest.example.json
+
+# ---------------------------------------------------------------------------
+# Node / Angular
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+.angular/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# ---------------------------------------------------------------------------
+# Android
+# ---------------------------------------------------------------------------
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/local.properties
+android/capacitor-cordova-android-plugins/
+android/app/release/
+*.apk
+*.aab
+*.keystore
+!android/app/debug.keystore
+
+# ---------------------------------------------------------------------------
+# iOS
+# ---------------------------------------------------------------------------
+ios/App/App/public/
+ios/App/Pods/
+ios/App/Podfile.lock
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/DerivedData/
+ios/App/build/
+*.xcuserdatad/
+xcuserdata/
+
+# ---------------------------------------------------------------------------
+# Sistema y editores
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+.env
+.env.local

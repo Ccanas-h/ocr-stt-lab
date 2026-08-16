@@ -1,0 +1,18 @@
+{
+  "$comment": "Plantilla de la galería de muestras. Copiar a manifest.json, poner las imágenes JPG/PNG junto a él y rellenar. manifest.json y las imágenes están en .gitignore a propósito: las boletas reales suelen traer datos personales que no deben publicarse.",
+  "samples": [
+    {
+      "id": "identificador-corto-sin-espacios",
+      "file": "nombre-del-archivo.jpg",
+      "label": "Nombre legible que se muestra en la app",
+      "difficulty": "baja | media | alta | muy alta",
+      "conditions": "Qué hace difícil (o fácil) esta imagen: iluminación, arrugas, ángulo, tipo de papel, fondo. Es lo que permite interpretar por qué un motor falló.",
+      "keyFields": [
+        "Los datos que la app real necesita extraer de verdad.",
+        "El motor acierta si estos aparecen en su salida, sin importar el orden.",
+        "Ej: RUT, folio, total, nombre del comercio."
+      ],
+      "groundTruth": "Transcripción completa del texto visible, línea por línea, con \\n entre renglones."
+    }
+  ]
+}

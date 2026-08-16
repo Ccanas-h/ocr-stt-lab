@@ -1,0 +1,28 @@
+.lab-engine-detail {
+  --padding-start: 2.9rem;
+  --min-height: 0;
+
+  p {
+    margin: 0 0 0.2rem;
+  }
+
+  ion-icon {
+    vertical-align: -2px;
+    margin-right: 0.25rem;
+  }
+}
+
+.lab-log-line {
+  margin: 0 0 0.3rem;
+
+  ion-note {
+    display: inline-block;
+    min-width: 4.5rem;
+  }
+
+  strong {
+    display: inline-block;
+    min-width: 4rem;
+    color: var(--ion-color-primary);
+  }
+}
